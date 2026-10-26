@@ -84,7 +84,7 @@ class DiffusersEngine:
             raise RuntimeError("engine not loaded")
         import torch
 
-        t0 = time.monotonic()
+        t0 = time.perf_counter()
         cancelled = False
 
         def cb(pipe, i, t, kw):
@@ -109,7 +109,7 @@ class DiffusersEngine:
                 raise Cancelled()
             image = out.images[0]
             peak = torch.cuda.max_memory_allocated() / 1e9
-            return GenResult(image=image, seed=seed, time_s=time.monotonic() - t0,
+            return GenResult(image=image, seed=seed, time_s=time.perf_counter() - t0,
                              peak_mem_gb=peak, steps=steps,
                              engine=f"diffusers {importlib.metadata.version('diffusers')}", model_id=self.model_id)
         finally:

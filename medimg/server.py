@@ -162,9 +162,11 @@ def create_app(engine, settings: config.Settings, profile: dict | None, *,
         if not p:
             return FALLBACK_PER_IMAGE_S
         try:
-            return float(estimate_seconds(p, width, height, steps))
+            est = float(estimate_seconds(p, width, height, steps))
         except Exception:
             return FALLBACK_PER_IMAGE_S
+        # a zero/negative estimate (e.g. sub-tick timings) would divide by zero downstream
+        return est if est > 0 else FALLBACK_PER_IMAGE_S
 
     # ---- sheet helpers
     def load_current_from_disk() -> None:

@@ -14,14 +14,14 @@ def benchmark(engine, *, sizes=((512, 512, 4), (1024, 1024, 2))) -> dict:
 
     Overhead (load/encode/decode) cannot be separated from step time with two short runs, so it is
     modelled as the measured load time scaled by sqrt(pixels / 512x512), capped at half the run."""
-    t0 = time.monotonic()
+    t0 = time.perf_counter()
     engine.load()
-    load_s = time.monotonic() - t0
+    load_s = time.perf_counter() - t0
     points = []
     for width, height, steps in sizes:
-        t1 = time.monotonic()
+        t1 = time.perf_counter()
         engine.generate(BENCH_PROMPT, 0, steps, width, height, lambda *_: None, lambda: False)
-        total_s = time.monotonic() - t1
+        total_s = time.perf_counter() - t1
         overhead = min(load_s * ((width * height) / REF_PIXELS) ** 0.5, total_s * 0.5)
         per_step = max((total_s - overhead) / steps, 1e-6)
         points.append({"width": width, "height": height, "steps": steps,

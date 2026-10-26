@@ -80,14 +80,14 @@ def test_second_run_skips_everything(monkeypatch, tmp_path, capsys):
     assert setup_cmd.run(ARGS) == 0
     assert w.calls == ["sync:mac", "download", "smoke", "assess"]
     first = capsys.readouterr().out
-    assert "start.sh" in first
+    assert setup_cmd._next_command() in first
 
     w.calls.clear()
     assert setup_cmd.run(ARGS) == 0
     assert w.calls == []
     second = capsys.readouterr().out
     assert second.count("✔ already done") >= 5
-    assert "start.sh" in second
+    assert setup_cmd._next_command() in second
     assert "HF_HUB_OFFLINE" not in os.environ
 
 

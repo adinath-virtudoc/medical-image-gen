@@ -48,9 +48,9 @@ def run(args) -> int:
 
     engine = _make_engine(fake)
     print(f"Loading the model ({engine.name})...")
-    t0 = time.monotonic()
+    t0 = time.perf_counter()
     engine.load()
-    load_s = time.monotonic() - t0
+    load_s = time.perf_counter() - t0
     try:
         def progress(phase: str, done: int, total: int) -> None:
             if phase == "denoising" and total:

@@ -53,7 +53,7 @@ def _uv_sync(extra: str) -> int:
 
 def _next_command() -> str:
     if sys.platform == "win32":
-        return "start.bat   (double-click it, or type start.bat in this folder)"
+        return ".\\start.bat   (or double-click start.bat in this folder)"
     if sys.platform == "darwin":
         return "./start.sh   (or double-click start.command)"
     return "./start.sh"

@@ -37,7 +37,7 @@ class FakeEngine:
         if not self.loaded:
             raise RuntimeError("engine not loaded")
         self.calls += 1
-        t0 = time.monotonic()
+        t0 = time.perf_counter()
         try:
             if self.calls in self.fail_on:
                 raise RuntimeError("fake failure")
@@ -55,7 +55,7 @@ class FakeEngine:
             colour = (rng.randrange(256), rng.randrange(256), rng.randrange(256))
             img = Image.new("RGB", (w, h), colour)
             ImageDraw.Draw(img).rectangle([0, 0, w // 2, h // 2], fill=tuple(255 - c for c in colour))
-            return GenResult(image=img, seed=seed, time_s=time.monotonic() - t0, peak_mem_gb=0.0,
+            return GenResult(image=img, seed=seed, time_s=time.perf_counter() - t0, peak_mem_gb=0.0,
                              steps=steps, engine="fake", model_id=self.model_id)
         finally:
             pass  # nothing to release
