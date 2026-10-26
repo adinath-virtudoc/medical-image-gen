@@ -15,7 +15,7 @@ dependencies = [
     "uvicorn",
     "python-multipart",
     "openpyxl",
-    "pillow",
+    "pillow>=12.3,<13",
     "psutil",
     "huggingface-hub",
 ]
