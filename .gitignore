@@ -39,3 +39,6 @@ dist/
 .env.*
 *.xlsm
 ~$*.xlsx
+
+# local-only agent transcripts (never commit)
+/agent workflows/
