@@ -1,0 +1,62 @@
+# Decisions (T0):
+# - Universal lock resolves (PLAN risk 1 fallback NOT needed). The torch cu128 source needs
+#   `extra = "nvidia"` in addition to the platform marker; without it uv cannot resolve the
+#   mac extra on linux splits (mflux needs torch>=2.13, the cu128 index stops at 2.11).
+# - Mac setup: `uv sync --extra mac`. Later workers run tests with `uv run --no-sync pytest`.
+#   Verified: plain `uv run pytest` after `uv sync --extra mac` keeps mflux installed (uv keeps
+#   the previously synced extras), but --no-sync is still the safe form.
+[project]
+name = "medical-image-gen"
+version = "0.1.0"
+description = "Local medical illustration generator (Z-Image Turbo), driven by an Excel sheet."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "python-multipart",
+    "openpyxl",
+    "pillow",
+    "psutil",
+    "huggingface-hub",
+]
+
+[project.optional-dependencies]
+mac = [
+    "mflux==0.22.0; sys_platform == 'darwin' and platform_machine == 'arm64'",
+]
+nvidia = [
+    "torch==2.9.1; sys_platform == 'linux' or sys_platform == 'win32'",
+    "diffusers==0.41.0; sys_platform == 'linux' or sys_platform == 'win32'",
+    "transformers>=5.5,<6; sys_platform == 'linux' or sys_platform == 'win32'",
+    "accelerate>=1.0; sys_platform == 'linux' or sys_platform == 'win32'",
+    "gguf; sys_platform == 'linux' or sys_platform == 'win32'",
+    "sentencepiece; sys_platform == 'linux' or sys_platform == 'win32'",
+    "protobuf; sys_platform == 'linux' or sys_platform == 'win32'",
+]
+
+[dependency-groups]
+dev = ["pytest", "httpx", "pyyaml"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["medimg*"]
+
+[tool.setuptools.package-data]
+medimg = ["static/*"]
+
+[tool.uv]
+conflicts = [[{ extra = "mac" }, { extra = "nvidia" }]]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'", extra = "nvidia" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

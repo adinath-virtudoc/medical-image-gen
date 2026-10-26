@@ -1,0 +1,41 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+device_profile.json
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.xlsx
+!templates/image_prompts_template.xlsx
+!templates/image_prompts_sample.xlsx
+*.safetensors
+*.gguf
+models/
+output/
+outputs/
+.pytest_cache/
+.DS_Store
+*.log
+*.egg-info/
+build/
+dist/
+*.tmp
+# extra model-weight formats
+*.ckpt
+*.pt
+*.pth
+*.bin
+*.onnx
+*.npz
+# extra image formats
+*.gif
+*.bmp
+*.tif
+*.tiff
+# local env / secrets
+.env
+.env.*
+*.xlsm
+~$*.xlsx
