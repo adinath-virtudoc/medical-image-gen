@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<!--
+  medical-image-gen UI. Offline, vanilla HTML/CSS/JS. Talks only to same-origin /api/* and /files/*.
+  Element ids (id: what it is):
+  status-strip: status strip container
+  st-model: model state text (not loaded, loading, ready, error)
+  st-phase: current job phase text
+  st-bar: step progress bar
+  st-bar-fill: progress bar fill
+  st-bar-text: step k of n text
+  st-image: image i of N in this batch
+  st-eta: estimated time remaining
+  st-local: local only label
+  st-error: status or connection error text
+  tab-btn-batch: tab A button
+  tab-btn-single: tab B button
+  tab-btn-gallery: tab C button
+  tab-btn-device: tab D button
+  tab-batch: tab A panel (Excel batch)
+  tab-single: tab B panel (Single image)
+  tab-gallery: tab C panel (Gallery)
+  tab-device: tab D panel (Device)
+  b-file: choose .xlsx file
+  b-size: default size for rows with no Size
+  b-retry: retry failed rows toggle
+  b-upload: upload and check button
+  b-upload-err: upload error text
+  b-summary: loaded sheet name
+  b-cards: six count cards
+  c-total: Total card count
+  c-done: Done card count
+  c-pending: Pending card count
+  c-blocked: Blocked card count
+  c-failed: Failed card count
+  c-invalid: Invalid card count
+  b-problems: problems list container
+  b-problems-body: problems table body
+  b-count: images to generate in this batch
+  b-estimate: live estimate text
+  b-filter-subject: Subject filter
+  b-filter-unit: Unit filter
+  b-filter-lecture: Lecture filter
+  b-generate: Generate button
+  b-cancel: Cancel button
+  b-download: Download updated sheet button
+  b-err: batch error text
+  s-prompt: prompt box
+  s-seed: seed number
+  s-random: Randomise button
+  s-steps: steps slider
+  s-steps-val: steps value text
+  s-size: size preset select
+  s-subject: optional Subject
+  s-unit: optional Unit
+  s-lecture: optional Lecture
+  s-name: optional Image Name
+  s-generate: Generate button
+  s-err: single image error text
+  s-result: single image result text
+  g-tree: collapsible tree
+  g-grid: thumbnail grid
+  g-title: selected node title
+  g-empty: empty message
+  g-err: gallery error text
+  lightbox: lightbox overlay
+  lb-img: full image
+  lb-meta: metadata list
+  lb-close: close button
+  lb-regen: Regenerate with new seed button
+  lb-reuse: Reuse in Single tab button
+  lb-folder: Open folder button
+  lb-err: lightbox error text
+  d-unverified: unverified banner
+  d-report: report text
+  d-table: estimates table
+  d-table-body: estimates table body
+  d-bench: Re-run benchmark button
+  d-err: device error text
+  set-root: output folder text box
+  set-unload: unload model after each job select
+  set-save: save settings button
+  set-err: settings error text
+  set-ok: settings saved text
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>medical-image-gen</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header id="status-strip" aria-live="polite">
+  <div class="st-row">
+    <strong class="brand">medical-image-gen</strong>
+    <span class="chip" id="st-local">local only</span>
+    <span>Model: <b id="st-model">not loaded</b></span>
+    <span id="st-phase">Idle</span>
+    <span id="st-image"></span>
+    <span id="st-eta"></span>
+  </div>
+  <div class="st-row">
+    <div class="bar" id="st-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="bar-fill" id="st-bar-fill"></div></div>
+    <span id="st-bar-text"></span>
+  </div>
+  <div class="err" id="st-error" hidden></div>
+</header>
+
+<nav class="tabs" role="tablist">
+  <button role="tab" id="tab-btn-batch" data-tab="batch" class="active">A. Excel batch</button>
+  <button role="tab" id="tab-btn-single" data-tab="single">B. Single image</button>
+  <button role="tab" id="tab-btn-gallery" data-tab="gallery">C. Gallery</button>
+  <button role="tab" id="tab-btn-device" data-tab="device">D. Device</button>
+</nav>
+
+<main>
+<section id="tab-batch" class="panel">
+  <h2>Excel batch</h2>
+  <div class="row">
+    <label>Spreadsheet (.xlsx) <input type="file" id="b-file" accept=".xlsx"></label>
+    <label>Size for rows with no Size
+      <select id="b-size">
+        <option value="1024x1024">1024x1024</option>
+        <option value="768x1344">768x1344 portrait</option>
+        <option value="1344x768">1344x768 landscape</option>
+        <option value="832x1216">832x1216</option>
+        <option value="1216x832">1216x832</option>
+        <option value="768x768">768x768 low-memory</option>
+      </select>
+    </label>
+    <label class="check"><input type="checkbox" id="b-retry"> Retry failed rows</label>
+    <button id="b-upload" class="primary">Upload and check</button>
+  </div>
+  <div class="err" id="b-upload-err" hidden></div>
+  <p id="b-summary" class="muted">No sheet loaded yet.</p>
+
+  <div class="cards" id="b-cards">
+    <div class="card"><span class="n" id="c-total">0</span><span>Total</span></div>
+    <div class="card ok"><span class="n" id="c-done">0</span><span>Done</span></div>
+    <div class="card"><span class="n" id="c-pending">0</span><span>Pending</span></div>
+    <div class="card warn"><span class="n" id="c-blocked">0</span><span>Blocked</span></div>
+    <div class="card bad"><span class="n" id="c-failed">0</span><span>Failed</span></div>
+    <div class="card bad"><span class="n" id="c-invalid">0</span><span>Invalid</span></div>
+  </div>
+
+  <div id="b-problems" hidden>
+    <h3>Rows that need attention</h3>
+    <table>
+      <thead><tr><th>Row</th><th>Problem</th><th>How to fix it</th></tr></thead>
+      <tbody id="b-problems-body"></tbody>
+    </table>
+  </div>
+
+  <h3>Run a batch</h3>
+  <div class="row">
+    <label>Narrow to
+      <select id="b-filter-subject"><option value="">All subjects</option></select>
+      <select id="b-filter-unit"><option value="">All units</option></select>
+      <select id="b-filter-lecture"><option value="">All lectures</option></select>
+    </label>
+  </div>
+  <div class="row">
+    <label>Images to generate in this batch <input type="number" id="b-count" min="1" value="1"></label>
+    <span id="b-estimate" class="muted"></span>
+  </div>
+  <div class="row">
+    <button id="b-generate" class="primary">Generate</button>
+    <button id="b-cancel">Cancel</button>
+    <button id="b-download">Download updated sheet</button>
+  </div>
+  <p class="muted small">Cancel stops after the current step. The image being made stays pending. Finished images stay done.</p>
+  <div class="err" id="b-err" hidden></div>
+</section>
+
+<section id="tab-single" class="panel" hidden>
+  <h2>Single image</h2>
+  <label class="block">Prompt
+    <textarea id="s-prompt" rows="5" placeholder="Describe the image. Use an adult, clothed subject."></textarea>
+  </label>
+  <div class="row">
+    <label>Seed <input type="number" id="s-seed" min="0" max="2147483647" placeholder="random"></label>
+    <button id="s-random">Randomise</button>
+    <label>Steps <input type="range" id="s-steps" min="4" max="15" value="9"> <b id="s-steps-val">9</b></label>
+  </div>
+  <p class="muted small">Steps: 8 to 9 recommended for Z-Image Turbo. More steps is slower and rarely better.</p>
+  <label class="block">Size
+    <select id="s-size">
+      <option value="1024x1024">1024x1024</option>
+      <option value="768x1344">768x1344 portrait</option>
+      <option value="1344x768">1344x768 landscape</option>
+      <option value="832x1216">832x1216</option>
+      <option value="1216x832">1216x832</option>
+      <option value="768x768">768x768 low-memory</option>
+    </select>
+  </label>
+  <fieldset>
+    <legend>Save into the gallery tree (optional). Leave empty to save under "_single".</legend>
+    <div class="row">
+      <label>Subject <input type="text" id="s-subject"></label>
+      <label>Unit <input type="text" id="s-unit"></label>
+      <label>Lecture <input type="text" id="s-lecture"></label>
+      <label>Image Name <input type="text" id="s-name"></label>
+    </div>
+  </fieldset>
+  <div class="row"><button id="s-generate" class="primary">Generate</button></div>
+  <div class="err" id="s-err" hidden></div>
+  <p id="s-result" class="muted"></p>
+</section>
+
+<section id="tab-gallery" class="panel" hidden>
+  <h2>Gallery</h2>
+  <div class="err" id="g-err" hidden></div>
+  <div class="gal">
+    <aside id="g-tree" class="tree"></aside>
+    <div>
+      <h3 id="g-title">Everything</h3>
+      <p id="g-empty" class="muted" hidden>No images here yet.</p>
+      <div id="g-grid" class="grid"></div>
+    </div>
+  </div>
+</section>
+
+<section id="tab-device" class="panel" hidden>
+  <h2>This machine</h2>
+  <div id="d-unverified" class="banner" hidden>Unverified: this NVIDIA setup has not been tested on real hardware. Speeds and memory settings are best guesses until you run the benchmark.</div>
+  <pre id="d-report" class="report">Loading...</pre>
+  <h3>Estimated time per image</h3>
+  <table id="d-table">
+    <thead><tr><th>Size</th><th>1 image</th><th>10 images</th><th>25 images</th><th>50 images</th></tr></thead>
+    <tbody id="d-table-body"></tbody>
+  </table>
+  <div class="row"><button id="d-bench">Re-run benchmark</button></div>
+  <div class="err" id="d-err" hidden></div>
+
+  <h3>Settings</h3>
+  <div class="row">
+    <label>Output folder <input type="text" id="set-root" size="48"></label>
+    <label>Unload model after each job
+      <select id="set-unload">
+        <option value="auto">Automatic (decide from memory)</option>
+        <option value="yes">Yes, free memory</option>
+        <option value="no">No, keep it loaded</option>
+      </select>
+    </label>
+    <button id="set-save">Save settings</button>
+  </div>
+  <div class="err" id="set-err" hidden></div>
+  <p id="set-ok" class="muted" hidden>Saved.</p>
+</section>
+</main>
+
+<div id="lightbox" class="lightbox" hidden>
+  <div class="lb-box">
+    <button id="lb-close" class="lb-x" aria-label="Close">Close</button>
+    <div class="lb-body">
+      <img id="lb-img" alt="Generated image">
+      <div>
+        <dl id="lb-meta"></dl>
+        <div class="row">
+          <button id="lb-regen">Regenerate with new seed</button>
+          <button id="lb-reuse">Reuse in Single tab</button>
+          <button id="lb-folder">Open folder</button>
+        </div>
+        <div class="err" id="lb-err" hidden></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
