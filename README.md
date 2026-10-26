@@ -55,6 +55,23 @@ You do not need to install Python yourself; setup installs everything it needs.
 
 Stop the app with Ctrl+C in its terminal window, or by closing that window.
 
+## Other Windows hardware (researched, not built yet)
+
+Today Windows needs an NVIDIA card and a 32.9 GB model download. Research on 2026-10-26 found
+smaller options, similar to the 5.9 GB 4-bit model the Mac uses. **None of these is built into
+this tool yet, and none has been tested on real hardware.**
+
+| Windows machine | Best option found | Download | Status |
+|---|---|---|---|
+| NVIDIA 8-12 GB | Z-Image Turbo GGUF Q4_K_M (12 GB: Q6_K) from `unsloth/Z-Image-Turbo-GGUF`, with CPU offload | 5.0 / 5.9 GB model file | Planned for v1.1. Works with the current diffusers engine |
+| NVIDIA 16 GB | Z-Image Turbo GGUF Q8_0 (close to full quality) | 7.2 GB instead of 32.9 GB | Planned for v1.1 |
+| NVIDIA, fastest | Nunchaku int4 (`nunchaku-ai/nunchaku-z-image-turbo`) | about 3-4 GB (estimate) | On hold until Windows install support is confirmed |
+| AMD or Intel GPU, laptop graphics | stable-diffusion.cpp (Vulkan build) with `leejet/Z-Image-Turbo-GGUF` | about 6-9 GB in total | Candidate for v2. Needs a new engine |
+| No GPU (CPU only) | stable-diffusion.cpp (CPU build) | about 6-9 GB in total | Candidate for v2. Expect several minutes per image |
+
+Full findings, the other models compared, and sources:
+[docs/HARDWARE_ALTERNATIVES.md](docs/HARDWARE_ALTERNATIVES.md).
+
 ## Guides
 
 | Guide | Read it when |
@@ -69,6 +86,7 @@ Stop the app with Ctrl+C in its terminal window, or by closing that window.
 | [docs/SAFETY_AND_LICENCES.md](docs/SAFETY_AND_LICENCES.md) | Rules, review duty, model licences |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How it is built; adding a model |
 | [docs/FUTURE.md](docs/FUTURE.md) | Ideas that are not built |
+| [docs/HARDWARE_ALTERNATIVES.md](docs/HARDWARE_ALTERNATIVES.md) | Smaller models and non-NVIDIA options (research) |
 
 **Adults only.** Every prompt must state an adult. Prompts that mention a minor are blocked and
 never generated. A clinician must review every image before use.
