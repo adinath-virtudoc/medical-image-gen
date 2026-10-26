@@ -1,0 +1,4 @@
+machdep.cpu.brand_string: Apple M2 Pro
+hw.memsize: 17179869184
+hw.optional.arm64: 1
+hw.ncpu: 10

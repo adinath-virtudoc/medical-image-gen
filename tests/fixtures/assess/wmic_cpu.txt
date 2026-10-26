@@ -1,0 +1,2 @@
+Name=Intel(R) Core(TM) i7-13700K
+
