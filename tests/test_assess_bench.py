@@ -21,3 +21,21 @@ def test_benchmark_custom_sizes():
     eng = FakeEngine(step_s=0.0)
     out = benchmark(eng, sizes=((256, 256, 2),))
     assert len(out["points"]) == 1 and eng.calls == 1
+
+
+def test_benchmark_uses_engine_reported_sampling_time():
+    from medimg.assess.bench import benchmark
+
+    class Eng:
+        last_timing = None
+
+        def load(self):
+            pass
+
+        def generate(self, prompt, seed, steps, width, height, on_progress, should_cancel):
+            self.last_timing = {"sample_s": 0.4 * steps, "steps": steps, "overhead_s": 0.2}
+
+    r = benchmark(Eng(), sizes=((512, 512, 4),))
+    p = r["points"][0]
+    assert p["per_step_s"] == 0.4
+    assert p["overhead_s"] == 0.2

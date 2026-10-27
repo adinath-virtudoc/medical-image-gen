@@ -30,7 +30,7 @@ def test_profile_has_schema_v1_keys():
     assert set(p["machine"]) == {"hostname", "os_name", "os_version", "cpu", "apple_chip", "ram_total_gb",
                                  "ram_free_gb", "gpu", "disk_free_gb", "disk_path", "python", "uv", "arch"}
     assert set(p["machine"]["gpu"]) == {"vendor", "name", "vram_gb", "driver", "cuda"}
-    assert set(p["backend"]) == {"name", "supported", "reason", "fix", "model_id", "offload_mode",
+    assert set(p["backend"]) == {"name", "supported", "reason", "fix", "model_id", "offload_mode", "device", "sdcpp",
                                  "unload_after_job", "engine_version"}
     assert set(p["benchmark"]) == {"measured_at", "load_s", "points", "fit"}
     assert p["actuals"] == [] and p["notes"] == []
@@ -78,7 +78,7 @@ def patched(tmp_path, monkeypatch):
     path = tmp_path / "device_profile.json"
     monkeypatch.setattr(assess, "PROFILE_PATH", path)
     monkeypatch.setattr(assess, "detect", lambda **kw: MACHINE)
-    monkeypatch.setattr(assess, "decide", lambda m: DECISION)
+    monkeypatch.setattr(assess, "decide", lambda m, **kw: DECISION)
     return path
 
 
@@ -100,7 +100,7 @@ def test_run_prints_report_without_json(patched, capsys):
 
 
 def test_run_unsupported_returns_1_and_still_saves(patched, monkeypatch, capsys):
-    monkeypatch.setattr(assess, "decide", lambda m: Decision(None, False, "nope", "fix it", None, False,
+    monkeypatch.setattr(assess, "decide", lambda m, **kw: Decision(None, False, "nope", "fix it", None, False,
                                                              None, None, None))
     assert assess.run(args()) == 1
     assert json.loads(patched.read_text())["backend"]["supported"] is False

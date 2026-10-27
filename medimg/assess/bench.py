@@ -22,8 +22,14 @@ def benchmark(engine, *, sizes=((512, 512, 4), (1024, 1024, 2))) -> dict:
         t1 = time.perf_counter()
         engine.generate(BENCH_PROMPT, 0, steps, width, height, lambda *_: None, lambda: False)
         total_s = time.perf_counter() - t1
-        overhead = min(load_s * ((width * height) / REF_PIXELS) ** 0.5, total_s * 0.5)
-        per_step = max((total_s - overhead) / steps, 1e-6)
+        timing = getattr(engine, "last_timing", None)
+        if timing and timing.get("sample_s", 0) > 0 and timing.get("steps", 0) > 0:
+            # Engine reported its own sampling time (sd.cpp): exact split, no modelling.
+            per_step = max(timing["sample_s"] / timing["steps"], 1e-6)
+            overhead = max(timing["overhead_s"], 0.0)
+        else:
+            overhead = min(load_s * ((width * height) / REF_PIXELS) ** 0.5, total_s * 0.5)
+            per_step = max((total_s - overhead) / steps, 1e-6)
         points.append({"width": width, "height": height, "steps": steps,
                        "total_s": round(total_s, 3), "per_step_s": round(per_step, 6),
                        "overhead_s": round(overhead, 3)})

@@ -78,3 +78,20 @@ def test_medimg_error_printed(monkeypatch, capsys):
     assert cli.main(["smoke"]) == 1
     err = capsys.readouterr().err
     assert "bad thing." in err and "do this." in err
+
+
+@pytest.mark.parametrize("cmd", ["setup", "assess", "serve", "smoke"])
+def test_engine_flag_all_commands(mocks, cmd):
+    assert cli.main([cmd]) == 0
+    assert mocks[cmd][0]["engine"] is None
+    assert cli.main([cmd, "--engine", "sdcpp"]) == 0
+    assert mocks[cmd][0]["engine"] == "sdcpp"
+    assert cli.main([cmd, "--engine", "auto"]) == 0
+    assert mocks[cmd][0]["engine"] == "auto"
+    assert cli.main([cmd, "--engine", "bogus"]) == 2
+
+
+@pytest.mark.parametrize("cmd", ["setup", "assess", "serve", "smoke"])
+def test_engine_in_help(cmd):
+    out = subprocess.run([sys.executable, "-m", "medimg", cmd, "--help"], capture_output=True, text=True)
+    assert out.returncode == 0 and "--engine" in out.stdout

@@ -36,7 +36,19 @@ def render_report(profile: dict) -> str:
     lines.append("")
     if b.get("supported"):
         mode = f" ({b['offload_mode']})" if b.get("offload_mode") else ""
-        lines.append(f"Supported: yes. Backend {b.get('name')}{mode}. {b.get('reason', '')}")
+        sd = b.get("sdcpp")
+        if b.get("name") == "sdcpp" and sd:
+            from medimg.sdcpp.pins import TIERS
+            tier = sd.get("tier")
+            quant = "?"
+            try:
+                quant = TIERS[tier]["diffusion"].filename.rsplit("-", 1)[-1].split(".")[0]
+            except (KeyError, TypeError):
+                pass
+            lines.append(f"Supported: yes. Backend sdcpp on {b.get('device') or '?'} "
+                         f"(tier {tier}: {quant} image model). {b.get('reason', '')}")
+        else:
+            lines.append(f"Supported: yes. Backend {b.get('name')}{mode}. {b.get('reason', '')}")
     else:
         lines.append(f"Supported: NO. {b.get('reason', '')}")
         if b.get("fix"):

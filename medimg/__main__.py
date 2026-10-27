@@ -6,7 +6,7 @@ import importlib
 import os
 import sys
 
-from medimg.config import VERSION
+from medimg.config import ENGINE_CHOICES, VERSION
 from medimg.errors import MedimgError
 
 # command -> (module, function, runs offline)
@@ -16,6 +16,13 @@ DISPATCH = {
     "serve": ("medimg.server", "main", True),
     "smoke": ("medimg.smoke", "run", True),
 }
+
+
+def _add_engine(sp: argparse.ArgumentParser) -> None:
+    sp.add_argument("--engine", choices=ENGINE_CHOICES, default=None, metavar="{auto,sdcpp}",
+                    help="image engine: 'auto' picks the best one for this computer; 'sdcpp' forces "
+                         "the one that works without an NVIDIA card (Intel/AMD graphics or processor "
+                         "only)")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -28,10 +35,14 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--skip-assess", action="store_true", help="skip the device assessment")
     s.add_argument("--yes", action="store_true", help="do not ask for confirmation")
 
+    _add_engine(s)
+
     a = sub.add_parser("assess", help="check this machine and estimate speed")
     a.add_argument("--no-benchmark", action="store_true", help="detect only, no timing run")
     a.add_argument("--json", action="store_true", help="print the profile as JSON")
     a.add_argument("--output-root", metavar="P", help="folder for output images")
+
+    _add_engine(a)
 
     v = sub.add_parser("serve", help="start the local web UI")
     v.add_argument("--port", type=int, metavar="N", help="port (default 8750)")
@@ -39,10 +50,13 @@ def build_parser() -> argparse.ArgumentParser:
     v.add_argument("--no-browser", action="store_true", help="do not open the browser")
     v.add_argument("--output-root", metavar="P", help="folder for output images")
 
+    _add_engine(v)
+
     m = sub.add_parser("smoke", help="generate one test image with the real model")
     m.add_argument("--size", default="512x512", metavar="WxH", help="image size (default 512x512)")
     m.add_argument("--steps", type=int, default=4, metavar="N", help="steps (default 4)")
     m.add_argument("--fake-engine", action="store_true", help="use the fake engine (no model)")
+    _add_engine(m)
     return p
 
 

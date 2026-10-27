@@ -29,6 +29,8 @@ class Decision:
     model_id: str | None
     download_gb: float | None
     min_disk_gb: float | None
+    device: str | None = None       # sdcpp: "cpu" | "vulkan0" | "metal"
+    tier: str | None = None         # sdcpp: "low" | "mid" | "high"
 
 
 def _mflux_cached() -> bool:
@@ -61,7 +63,72 @@ def _nvidia_mode(vram: float) -> tuple[str | None, float]:
     return None, 0.0
 
 
-def decide(m) -> Decision:
+def _sdcpp_cached(tier: str) -> bool:
+    """True when every model file of the tier is in the local cache. Offline; never raises."""
+    try:
+        from medimg.sdcpp import install
+        return install.models_cached(tier) is not None
+    except Exception:
+        return False
+
+
+def _sdcpp_device(m, ram: float) -> str:
+    vendor = (m.gpu or {}).get("vendor")
+    if m.os_name == "Darwin" and m.arch == "arm64":
+        return "metal"
+    if vendor in ("amd", "nvidia") or (vendor == "intel" and ram >= 16):
+        return "vulkan0"
+    return "cpu"
+
+
+def _sdcpp(m, prefix: str = "") -> Decision:
+    """sd.cpp rules (PLAN_SDCPP 3.4). `prefix` is the reason it was chosen over CUDA."""
+    from medimg.sdcpp import pins
+    ram = m.ram_total_gb
+    if m.os_name == "Darwin" and m.arch != "arm64":
+        return _no("Intel Mac: Apple-silicon only.",
+                   "Use an Apple-silicon Mac (M1 or newer) or a PC with an NVIDIA GPU.")
+    if ram < config.SDCPP_MIN_RAM_GB:
+        return _no(f"{prefix}This computer has {ram:g} GB of RAM; at least 8 GB is needed.",
+                   "Use a computer with 8 GB or more.")
+    try:
+        override = config.load_settings().sdcpp_tier
+    except Exception:
+        override = None
+    tier = override or pins.tier_for_ram(ram)
+    device = _sdcpp_device(m, ram)
+    cached = _sdcpp_cached(tier)
+    download = 0.0 if cached else pins.TIER_GB[tier]
+    need = 0.0 if cached else round(download + config.DISK_MARGIN_GB, 1)
+    if m.disk_free_gb < need:
+        return _no(f"{prefix}Not enough disk space: {m.disk_free_gb:.1f} GB free at {m.disk_path}, "
+                   f"need {need:.1f} GB ({download:g} GB download + {config.DISK_MARGIN_GB} GB margin).",
+                   "Free up disk space and run assess again.")
+    where = {"cpu": "on the processor", "vulkan0": "on the graphics chip (Vulkan, tried first)",
+             "metal": "on the Apple graphics chip (Metal)"}[device]
+    span = {"low": "under 12 GB RAM", "mid": "12-24 GB RAM", "high": "24 GB RAM or more"}[tier]
+    if prefix:
+        reason = f"{prefix}Using stable-diffusion.cpp (sd.cpp) instead: {where}, tier {tier} ({span})"
+    else:
+        reason = f"{m.os_name}: sd.cpp {where}, tier {tier} ({span})"
+    return Decision("sdcpp", True, reason, "", None, False, config.SDCPP_MODEL_ID, download, need,
+                    device, tier)
+
+
+def decide(m, *, engine: str | None = None) -> Decision:
+    if engine == "sdcpp":
+        return _sdcpp(m)
+    d = _decide_native(m)
+    if (not d.supported and engine in (None, "auto") and m.os_name in ("Windows", "Linux")
+            and "Not enough disk space" not in d.reason):
+        why = d.reason.rstrip()
+        if not why.endswith((".", "!")):
+            why += "."
+        return _sdcpp(m, why + " ")
+    return d
+
+
+def _decide_native(m) -> Decision:
     gpu = m.gpu or {}
     vendor = gpu.get("vendor")
 
