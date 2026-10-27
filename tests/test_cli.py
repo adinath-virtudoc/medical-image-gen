@@ -11,7 +11,7 @@ from medimg import __main__ as cli
 def test_help_lists_commands():
     out = subprocess.run([sys.executable, "-m", "medimg", "--help"], capture_output=True, text=True)
     assert out.returncode == 0
-    for c in ("setup", "assess", "serve", "smoke"):
+    for c in ("setup", "assess", "serve", "smoke", "selftest"):
         assert c in out.stdout
 
 
@@ -37,7 +37,7 @@ def mocks(monkeypatch):
     return seen
 
 
-@pytest.mark.parametrize("cmd,expected", [("serve", "1"), ("smoke", "1"), ("assess", "1"), ("setup", None)])
+@pytest.mark.parametrize("cmd,expected", [("serve", "1"), ("smoke", "1"), ("assess", "1"), ("setup", None), ("selftest", "1")])
 def test_offline_env(mocks, cmd, expected):
     assert cli.main([cmd]) == 0
     assert mocks[cmd][1] == expected
@@ -80,7 +80,7 @@ def test_medimg_error_printed(monkeypatch, capsys):
     assert "bad thing." in err and "do this." in err
 
 
-@pytest.mark.parametrize("cmd", ["setup", "assess", "serve", "smoke"])
+@pytest.mark.parametrize("cmd", ["setup", "assess", "serve", "smoke", "selftest"])
 def test_engine_flag_all_commands(mocks, cmd):
     assert cli.main([cmd]) == 0
     assert mocks[cmd][0]["engine"] is None
@@ -91,7 +91,34 @@ def test_engine_flag_all_commands(mocks, cmd):
     assert cli.main([cmd, "--engine", "bogus"]) == 2
 
 
-@pytest.mark.parametrize("cmd", ["setup", "assess", "serve", "smoke"])
+@pytest.mark.parametrize("cmd", ["setup", "assess", "serve", "smoke", "selftest"])
 def test_engine_in_help(cmd):
     out = subprocess.run([sys.executable, "-m", "medimg", cmd, "--help"], capture_output=True, text=True)
     assert out.returncode == 0 and "--engine" in out.stdout
+
+
+def test_new_flags_parse(mocks):
+    assert cli.main(["selftest", "--quick", "--all-tiers", "--engine", "sdcpp", "--tier", "mid",
+                     "--size", "256x256", "--steps", "2", "--timeout", "60", "--output-root", "/x",
+                     "--no-open", "--json", "--fake-engine"]) == 0
+    a = mocks["selftest"][0]
+    assert a["quick"] and a["all_tiers"] and a["engine"] == "sdcpp" and a["tier"] == "mid"
+    assert a["size"] == "256x256" and a["steps"] == 2 and a["timeout"] == 60.0
+    assert a["output_root"] == "/x" and a["no_open"] and a["json"] and a["fake_engine"]
+    assert cli.main(["selftest"]) == 0
+    d = mocks["selftest"][0]
+    assert d["size"] == "512x512" and d["steps"] == 4 and d["timeout"] == 1800 and d["tier"] is None
+    assert cli.main(["setup", "--tier", "low", "--output-root", "/x"]) == 0
+    assert mocks["setup"][0]["tier"] == "low" and mocks["setup"][0]["output_root"] == "/x"
+    assert cli.main(["assess", "--tier", "mid", "--retry-gpu"]) == 0
+    assert mocks["assess"][0]["tier"] == "mid" and mocks["assess"][0]["retry_gpu"] is True
+    assert cli.main(["assess"]) == 0 and mocks["assess"][0]["retry_gpu"] is False
+    assert cli.main(["smoke", "--tier", "low"]) == 0
+    assert mocks["smoke"][0]["tier"] == "low"
+    assert cli.main(["smoke", "--tier", "auto"]) == 0
+
+
+@pytest.mark.parametrize("argv", [["setup", "--tier", "huge"], ["assess", "--tier", "x"],
+                                  ["smoke", "--tier", "x"], ["selftest", "--tier", "auto"]])
+def test_bad_tier_exit_2(mocks, argv):
+    assert cli.main(argv) == 2
