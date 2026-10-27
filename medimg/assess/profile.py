@@ -11,6 +11,7 @@ from pathlib import Path
 
 from medimg import config
 from medimg.config import PROFILE_PATH, VERSION
+from medimg.osutil import replace_retry
 
 SCHEMA_VERSION = 1
 MAX_ACTUALS = 50
@@ -89,7 +90,7 @@ def save_profile(profile: dict, path=None) -> None:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(profile, f, indent=2, ensure_ascii=False)
             f.write("\n")
-        os.replace(tmp, p)
+        replace_retry(tmp, p)
     except BaseException:
         try:
             os.unlink(tmp)

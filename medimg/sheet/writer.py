@@ -8,6 +8,8 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
+from ..osutil import replace_retry
+
 from .columns import DISPLAY, SYSTEM, norm_header
 from .reader import _header_map, find_worksheet
 
@@ -38,7 +40,7 @@ def _save_atomic(wb, path: Path) -> None:
     os.close(fd)
     try:
         wb.save(tmp)
-        os.replace(tmp, path)
+        replace_retry(tmp, path)
     except BaseException:
         try:
             os.unlink(tmp)
