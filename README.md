@@ -57,6 +57,14 @@ You do not need to install Python yourself; setup installs everything it needs.
 
 Stop the app with Ctrl+C in its terminal window, or by closing that window.
 
+## New computer? Run the self-test
+
+After setup, double-click `selftest.command` (Mac) or double-click `selftest.bat` (Windows), or run
+`./selftest.sh` (Linux). It makes one small test image per engine, takes a few minutes (up to about
+5 minutes per image on a slow laptop), and writes a report into the `_selftest` folder inside the output
+folder. Send both report files (the `.txt` and the `.json`) to the project owner. More ways to test on
+real computers: [docs/TEST_MACHINES.md](docs/TEST_MACHINES.md).
+
 ## Windows/Linux without NVIDIA
 
 A PC with Intel or AMD graphics, or no graphics card, uses the stable-diffusion.cpp engine. Setup
@@ -76,6 +84,7 @@ Step by step: [docs/SETUP_WINDOWS_SDCPP.md](docs/SETUP_WINDOWS_SDCPP.md). Resear
 | [docs/USING_THE_SHEET.md](docs/USING_THE_SHEET.md) | Filling in the Excel sheet |
 | [docs/HANDOFF.md](docs/HANDOFF.md) | Passing a half-finished sheet to the next person |
 | [docs/PROMPTING_GUIDE.md](docs/PROMPTING_GUIDE.md) | Writing prompts that work |
+| [docs/TEST_MACHINES.md](docs/TEST_MACHINES.md) | Testing on a real computer: self-test, GitHub real run, lab laptop |
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Something went wrong |
 | [docs/SAFETY_AND_LICENCES.md](docs/SAFETY_AND_LICENCES.md) | Rules, review duty, model licences |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How it is built; adding a model |

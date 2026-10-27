@@ -56,6 +56,10 @@ the model is already on the Mac, 15-40 min for a first download.
 
 6. **First image** (1-4 min): follow steps 4 and 5 of the README quick start.
 
+7. **Self-test** (optional, a few minutes). Double-click `selftest.command`. It makes one small test
+   image and writes a report into the `_selftest` folder; send both report files to the project owner.
+   See [TEST_MACHINES.md](TEST_MACHINES.md).
+
 ## Memory notes
 
 On a 16 GB Mac the app unloads the model after each image to stay safe (adds about 8 s per image).

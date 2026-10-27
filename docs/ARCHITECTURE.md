@@ -7,7 +7,7 @@ vanilla-JS page. No database, no build step, no network at run time.
 
 | Module | Job |
 |---|---|
-| `medimg/__main__.py` | Command line: `setup`, `assess`, `serve`, `smoke`. Sets `HF_HUB_OFFLINE=1` for everything except `setup` |
+| `medimg/__main__.py` | Command line: `setup`, `assess`, `serve`, `smoke`, `selftest`. Sets `HF_HUB_OFFLINE=1` for everything except `setup` |
 | `medimg/config.py` | Defaults (steps 9, 1024x1024, port 8750), size limits, model ids, settings file |
 | `medimg/rules.py` | Adults-only check, `check_prompt(prompt)`. No configuration |
 | `medimg/sheet/` | Read, validate and write the Excel sheet (openpyxl), status logic, batch selection |
@@ -19,6 +19,8 @@ vanilla-JS page. No database, no build step, no network at run time.
 | `medimg/server.py` | FastAPI app on 127.0.0.1; JSON routes under `/api`, images under `/files` |
 | `medimg/static/` | The UI: status strip and four tabs (Excel batch, Single image, Gallery, Device) |
 | `medimg/setup_cmd.py`, `download.py`, `smoke.py` | One-time setup, model download, real-model test image |
+| `medimg/selftest.py` | The self-test: one tiny real image per ready engine, plain-text and JSON report, never downloads |
+| `tools/e2e_check.py` | End-to-end check over the web address: starts the server, uploads the sample sheet, runs a batch |
 
 Only `mflux_engine.py` imports `mflux` or `mlx`; only `diffusers_engine.py` imports `torch` or
 `diffusers`, and only inside methods. Tests replace both with stubs, so no GPU or weights are needed.
@@ -148,6 +150,37 @@ and the licence table.
 `device_profile.json` (repo root, not committed) holds the machine description, the backend decision,
 the benchmark points and recent actual times. Its keys are stable so later tools can read it (see
 [FUTURE.md](FUTURE.md)).
+
+The `sdcpp` record also holds `device_proven` (true when a test image was really made on the saved
+device) and `failed_devices` (graphics chips that failed, such as `vulkan0`). The app never picks a
+failed device again; `assess --retry-gpu` clears that memory for one run, for example after a driver
+update. An earlier record is reused only when the processor, model tier, program build and release all
+match.
+
+**Engine-matched profile rule.** One profile file exists per repo. A running engine reads and writes
+it only when it belongs to that engine (`profile_matches`). If the file belongs to another engine, the
+server works from an in-memory profile with no benchmark and no actual times, and never writes the
+file. This keeps one engine's measurements out of the other's estimates. Run
+`setup --engine sdcpp` (which runs assess) to make the sd.cpp profile permanent.
+
+Developers: set the environment variable `MEDIMG_PROFILE_PATH` to use another profile file. The fake
+end-to-end run does this so it never writes fake times into the real file.
+
+## Test strategy
+
+| Layer | Runs where / when | What it proves | What it cannot prove |
+|---|---|---|---|
+| Fake-engine unit and API tests (`uv run pytest`) | Every push, Ubuntu + Windows (`tests.yml`), and locally | Sheet rules, adults-only gate, API, progress parsing on real sd-cli logs, process kill/cancel with the fake `sd-cli`, profile/estimate math, failure messages | That a real model loads, fits in memory, or is fast enough |
+| `tools/e2e_check.py --fake-engine` | Every push (inside pytest) | The whole HTTP path: server start, upload, gate, batch, PNG + sidecar + sheet row | Real generation |
+| Real runs on the Mac (`selftest`, `e2e_check --engine sdcpp`) | Each build of the harness | mflux and sd.cpp (Metal) really generate on Apple silicon | Windows/Linux behaviour, low-RAM behaviour |
+| GitHub real CPU run (`real-run.yml`, job `cpu-real-run`) | Weekly + on demand | sd.cpp on the processor on real Windows Server and Ubuntu: download with pinned SHA256, graphics-build health check and processor-build fallback, smoke, benchmark, e2e, self-test | Graphics-chip paths (no GPU), 8 GB laptops, Intel Iris drivers, antivirus, intern behaviour |
+| Self-hosted real-hardware run (`self-hosted-real-run`) and the intern's `selftest` | On demand | The exact intern laptop: its RAM, its graphics driver, Vulkan out-of-memory and fallback, real speed | Other laptops; anything the laptop cannot run |
+| Clinician review | Every image before use | Anatomy and clinical correctness | n/a |
+
+**Anatomy correctness cannot be tested automatically.** No test in this repo judges image content; a
+clinician must review every image ([SAFETY_AND_LICENCES.md](SAFETY_AND_LICENCES.md)). The
+NVIDIA/diffusers path stays "unverified on real hardware" until a GPU machine runs the real run. How to
+use each layer: [TEST_MACHINES.md](TEST_MACHINES.md).
 
 ## Tests
 

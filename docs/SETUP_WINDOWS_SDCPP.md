@@ -71,6 +71,10 @@ result into a picture. A newer or faster processor will be quicker.
 4. **Make the first image.** Follow steps 4 and 5 of the quick start in the
    [README](../README.md). Start with the 512x512 draft size.
 
+5. **Run the self-test** (a few minutes, up to about 5 minutes per image). Double-click `selftest.bat`.
+   It makes one small test image and writes a report into the `_selftest` folder. Send both report
+   files to the project owner. More in [TEST_MACHINES.md](TEST_MACHINES.md).
+
 If Windows shows a blue "Windows protected your PC" box (SmartScreen) when you run the program,
 click **More info**, then **Run anyway**. This is normal for a file downloaded from the internet.
 
@@ -98,6 +102,9 @@ click **More info**, then **Run anyway**. This is normal for a file downloaded f
    ```
 
    Success: your browser opens at `http://127.0.0.1:8750`.
+
+On Linux, run the self-test too (a few minutes): paste `./selftest.sh`. It writes a report into the
+`_selftest` folder; send both report files to the project owner.
 
 Linux note: the processor path needs no graphics driver. If you want the app to try your graphics chip,
 it needs the Vulkan driver of your distribution (on Ubuntu, the package `mesa-vulkan-drivers` for

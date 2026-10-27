@@ -45,3 +45,16 @@ The `sdcpp` engine is built (see [ARCHITECTURE.md](ARCHITECTURE.md)). These part
 - **Re-pinning the release.** Releases of stable-diffusion.cpp appear for every code change, and old
   ones can be removed. If the pinned download disappears, change the release tag and checksums in
   `medimg/sdcpp/pins.py`, then re-run a real image and update the saved test logs.
+
+## 6. Run self-test button in the Device tab
+
+The Device tab shows only a hint that points to the self-test launcher (double-click `selftest.bat` on Windows or `selftest.command` on Mac). A button was left
+out because it would load a second copy of the model while the app's worker may already hold one, which
+runs 8-16 GB computers out of memory, and it would need a new kind of job. The launcher gives the same
+report safely. A button could be added if the server learns to pause its worker first.
+
+## 7. A GPU test machine
+
+The NVIDIA path is untested on real hardware. Options (paid, so Adinath decides): GitHub GPU larger
+runners, a rented GPU cloud machine registered as a self-hosted runner, or a borrowed NVIDIA PC. See
+[TEST_MACHINES.md](TEST_MACHINES.md).
