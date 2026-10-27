@@ -25,7 +25,16 @@ def make_sheet(path, n=3):
 
 
 def sheet_rows(path):
-    ws = load_workbook(path).worksheets[0]
+    # The test polls this while the worker swaps the file in; on Windows an open that lands
+    # in the replace window fails with PermissionError. The app itself reads under sheet_lock.
+    for attempt in range(50):
+        try:
+            ws = load_workbook(path).worksheets[0]
+            break
+        except PermissionError:
+            if attempt == 49:
+                raise
+            time.sleep(0.02)
     hdr = [c.value for c in ws[1]]
     return [dict(zip(hdr, [c.value for c in r])) for r in ws.iter_rows(min_row=2)]
 
