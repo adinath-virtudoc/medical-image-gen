@@ -7,6 +7,8 @@ import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from medimg.osutil import replace_retry
+
 APP_NAME = "medical-image-gen"
 VERSION = "0.1.0"
 DEFAULT_PORT = 8750
@@ -114,7 +116,7 @@ def save_settings(s: Settings, path: Path = SETTINGS_PATH) -> None:
             json.dump(data, f, indent=2)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp, path)
+        replace_retry(tmp, path)
     except BaseException:
         try:
             os.unlink(tmp)

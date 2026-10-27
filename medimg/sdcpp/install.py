@@ -16,6 +16,7 @@ from pathlib import Path
 
 from medimg.config import SDCPP_RELEASE_TAG, TOOLS_DIR
 from medimg.errors import ModelUnavailable
+from medimg.osutil import replace_retry
 from medimg.sdcpp import pins
 from medimg.sdcpp.pins import binary_dir, build_for
 
@@ -165,7 +166,7 @@ def install_binary(build: str, progress=print, *, tools_dir: Path = TOOLS_DIR,
             exe.chmod(exe.stat().st_mode | 0o111)
         if target.exists():
             shutil.rmtree(target)
-        os.replace(tmp, target)
+        replace_retry(tmp, target)
     except BaseException:
         shutil.rmtree(tmp, ignore_errors=True)
         raise

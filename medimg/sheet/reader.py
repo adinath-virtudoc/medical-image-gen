@@ -76,8 +76,8 @@ def import_sheet(src: Path, output_root: Path) -> Path:
     pointer = sheets / "current.json"
     tmp = pointer.with_suffix(".json.tmp")
     tmp.write_text(json.dumps({"path": dest.name, "original_name": src.name}), encoding="utf-8")
-    import os
-    os.replace(tmp, pointer)
+    from ..osutil import replace_retry
+    replace_retry(tmp, pointer)
     return dest
 
 

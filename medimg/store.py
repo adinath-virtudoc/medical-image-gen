@@ -12,6 +12,7 @@ from PIL.PngImagePlugin import PngInfo
 
 from .errors import Invalid, NotFound
 from .names import image_id
+from .osutil import replace_retry
 
 PNG_KEY = "medical-image-gen"
 THUMB_SIZE = 256
@@ -87,11 +88,11 @@ class Store:
             info.add_text(PNG_KEY, payload)
             tmp = png.with_name(png.name + ".tmp")
             image.save(tmp, format="PNG", pnginfo=info)
-            os.replace(tmp, png)
+            replace_retry(tmp, png)
             side = png.with_suffix(".json")
             tmp_j = side.with_name(side.name + ".tmp")
             tmp_j.write_text(payload, encoding="utf-8")
-            os.replace(tmp_j, side)
+            replace_retry(tmp_j, side)
             self.refresh()
         return record
 
@@ -197,5 +198,5 @@ class Store:
                     im.thumbnail((THUMB_SIZE, THUMB_SIZE), Image.LANCZOS)
                     tmp = thumb.with_name(thumb.name + ".tmp")
                     im.save(tmp, format="JPEG", quality=85)
-                os.replace(tmp, thumb)
+                replace_retry(tmp, thumb)
         return thumb
