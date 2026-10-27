@@ -313,3 +313,33 @@ def test_health_check_surfaces_loader_error():
         returncode, stdout, stderr = 1, "", "sd-cli: GLIBC_2.38 not found\n"
     with pytest.raises(ModelUnavailable, match="GLIBC_2.38"):
         install.health_check(("a",), Path("."), run=lambda c, **k: R())
+
+
+def test_health_check_calls_list_devices(monkeypatch):
+    calls = []
+
+    def rec(sd_cli, cwd, run=None):
+        calls.append((sd_cli, cwd))
+        return [("Vulkan0", "x"), ("CPU", "y")]
+
+    monkeypatch.setattr(install, "list_devices", rec)
+    assert install.health_check(("a",), Path(".")) == "devices: Vulkan0, CPU"
+    assert len(calls) == 1
+    monkeypatch.setattr(install, "list_devices", lambda *a, **k: [("Vulkan0", "x")])
+    with pytest.raises(ModelUnavailable):
+        install.health_check(("a",), Path("."))
+
+
+def test_single_list_devices_call_site():
+    src = Path(install.__file__).read_text()
+    assert src.count('"--list-devices"') + src.count("'--list-devices'") == 1
+
+
+def test_list_devices_rich_errors(monkeypatch):
+    with pytest.raises(ModelUnavailable) as ei:
+        install.list_devices(("a",), Path("."), run=lambda c, **k: Done(0xC0000005, ""))
+    assert "0xC0000005" in str(ei.value)
+    monkeypatch.setattr(install.os, "name", "nt")
+    with pytest.raises(ModelUnavailable) as ei:
+        install.list_devices(("a",), Path("."), run=lambda c, **k: Done(3221225781, ""))
+    assert "Visual C++" in ei.value.fix

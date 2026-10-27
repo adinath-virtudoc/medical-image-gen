@@ -6,8 +6,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from medimg import config
-from medimg.errors import Invalid, Unsupported
+from medimg import config, rules
+from medimg.errors import Blocked, Invalid, Unsupported
 
 SMOKE_PROMPT = ("Clinical medical illustration of an adult human hand, X-ray style, "
                 "neutral grey background, sharp detail")
@@ -40,7 +40,7 @@ def _confirmed_device(device: str, tier) -> str:
     return "cpu"
 
 
-def _make_engine(fake: bool, engine: str | None = None):
+def _make_engine(fake: bool, engine: str | None = None, tier: str | None = None):
     from medimg.engines import make_engine
     if fake:
         return make_engine("fake", None, fake=True)
@@ -51,9 +51,10 @@ def _make_engine(fake: bool, engine: str | None = None):
     profile = load_profile()
     backend_info = (profile or {}).get("backend") or {}
     if (profile and backend_info.get("supported") and backend_info.get("name")
-            and (engine is None or backend_info["name"] == engine)):
+            and (engine is None or backend_info["name"] == engine)
+            and (tier is None or (backend_info.get("sdcpp") or {}).get("tier") == tier)):
         return make_engine(backend_info["name"], profile)
-    decision = decide(detect(), engine=engine)
+    decision = decide(detect(), engine=engine, tier=tier)
     if not decision.supported:
         raise Unsupported(decision.reason, decision.fix)
     device = decision.device
@@ -61,7 +62,7 @@ def _make_engine(fake: bool, engine: str | None = None):
         device = _confirmed_device(device, decision.tier)
     return make_engine(decision.backend, {"backend": {
         "offload_mode": decision.offload_mode, "device": device,
-        "sdcpp": {"tier": decision.tier} if decision.tier else {}}})
+        "sdcpp": {"tier": decision.tier} if decision.tier else {}}}, tier=decision.tier)
 
 
 def run(args) -> int:
@@ -70,7 +71,13 @@ def run(args) -> int:
     fake = bool(getattr(args, "fake_engine", False))
     root = Path(getattr(args, "output_root", None) or config.load_settings().output_root)
 
-    engine = _make_engine(fake, getattr(args, "engine", None))
+    tier = getattr(args, "tier", None)
+    tier = None if tier in (None, "auto") else tier
+    problem = rules.check_prompt(SMOKE_PROMPT)
+    if problem is not None:
+        raise Blocked(problem, rules.HINT)
+
+    engine = _make_engine(fake, getattr(args, "engine", None), tier)
     if engine.name == "sdcpp":
         print(f"Loading the model (sdcpp on {getattr(engine, 'device', 'cpu')})...")
     else:

@@ -31,7 +31,8 @@ GGUF_REPO_ID = "unsloth/Z-Image-Turbo-GGUF"
 GGUF_FILES = {"q8_0": ("z-image-turbo-Q8_0.gguf", 7.3), "q4_k_m": ("z-image-turbo-Q4_K_M.gguf", 5.1)}  # (file, GB)
 DISK_MARGIN_GB = 5
 REPO_ROOT: Path = Path(__file__).resolve().parent.parent
-PROFILE_PATH = REPO_ROOT / "device_profile.json"
+PROFILE_PATH = (Path(os.environ["MEDIMG_PROFILE_PATH"]).expanduser() if os.environ.get("MEDIMG_PROFILE_PATH")
+                else REPO_ROOT / "device_profile.json")
 SETTINGS_PATH = Path.home() / ".medical-image-gen" / "config.json"
 DEFAULT_OUTPUT_ROOT = Path.home() / "medical-image-gen-output"
 SDCPP_RELEASE_TAG = "master-1015-e41fbcf"

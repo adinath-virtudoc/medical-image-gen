@@ -191,3 +191,56 @@ def test_device_unverified_until_an_actual(monkeypatch, tmp_path):
     with client:
         d = client.get("/api/device").json()
         assert d["unverified"] is False and d["unverified_text"] is None
+
+
+def test_profile_for_engine():
+    from medimg import server
+    saved = {"machine": {"x": 1}, "backend": {"name": "mflux"},
+             "benchmark": {"fit": 1}, "actuals": [{"a": 1}], "notes": ["n"]}
+    be = {"name": "sdcpp", "device": "cpu"}
+    out = server._profile_for_engine(saved, be)
+    assert out["backend"] == be and out["machine"] == {"x": 1}
+    assert out["benchmark"] is None and out["actuals"] == [] and out["notes"] == []
+    same = server._profile_for_engine({**saved, "backend": {"name": "sdcpp"}}, be)
+    assert same["backend"] == be and same["actuals"] == [{"a": 1}] and same["benchmark"] == {"fit": 1}
+    assert server._profile_for_engine(None, be)["backend"] == be
+
+
+def test_foreign_profile_not_used_or_written(monkeypatch, tmp_path):
+    import json
+    from medimg import server
+    monkeypatch.setenv("FAKE_SD_CLI_STEP_S", "0.001")
+    foreign = profile_dict()
+    foreign["actuals"] = [{"width": 512, "height": 512, "steps": 4, "time_s": 9.0, "at": "x"}] * 2
+    pfile = tmp_path / "device_profile.json"
+    pfile.write_text(json.dumps(foreign))
+    before = pfile.read_bytes()
+    be = {"name": "sdcpp", "device": "cpu", "sdcpp": {"build": "mac-arm64", "tier": "mid"}}
+    prof = server._profile_for_engine(json.loads(before), be)
+    engine = SdcppEngine(fake_paths(tmp_path), "cpu")
+    client, app, engine, root = make_client(monkeypatch, tmp_path, engine=engine, profile=prof)
+    assert pfile.read_bytes() == before
+    with client:
+        d = client.get("/api/device").json()
+        assert d["estimates"] == [] and d["unverified"] is True
+        assert d["profile"]["backend"]["name"] == "sdcpp"
+        r = client.post("/api/jobs/single", json={"prompt": OK_PROMPT, "steps": 4, "width": 512, "height": 512})
+        assert r.status_code == 202, r.text
+        end = wait_job(client, r.json()["job_id"], timeout=60)
+        assert end["last_job"]["outcome"] == "done"
+    assert pfile.read_bytes() == before
+
+
+def test_device_table_uses_shared_estimates(monkeypatch, tmp_path):
+    from medimg import server
+    assert not hasattr(server, "_sdcpp_table")
+    seen = []
+
+    def rec(p, steps=None, presets=None):
+        seen.append(presets)
+        return []
+    monkeypatch.setattr(server, "estimates_table", rec)
+    client, engine, root = sd_client(monkeypatch, tmp_path)
+    with client:
+        client.get("/api/device")
+    assert seen and seen[-1] == config.SDCPP_SIZE_PRESETS

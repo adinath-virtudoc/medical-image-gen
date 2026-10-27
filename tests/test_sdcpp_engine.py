@@ -29,6 +29,13 @@ def fake_paths(tmp_path) -> SdcppPaths:
                       build="mac-arm64", tier="mid")
 
 
+@pytest.fixture(autouse=True)
+def _private_tempdir(tmp_path, monkeypatch):
+    d = tmp_path / "systmp"
+    d.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(d))
+
+
 def temp_dirs():
     return set(glob.glob(str(Path(tempfile.gettempdir()) / "medimg-sdcpp-*")))
 
@@ -231,3 +238,86 @@ def test_make_engine_sdcpp_no_build(monkeypatch):
     monkeypatch.setattr(install, "chosen_build", lambda o, a: None)
     with pytest.raises(ModelUnavailable):
         make_engine("sdcpp", {"backend": {}})
+
+
+class _Stub:
+    def start(self):
+        pass
+
+    def stop(self):
+        return 0.0
+
+
+class _FakeProc:
+    def __init__(self, chunks):
+        self.pid = 1
+        self.returncode = 1
+        outer = self
+        self._chunks = list(chunks)
+
+        class _Out:
+            def read(self, n):
+                return outer._chunks.pop(0) if outer._chunks else b""
+
+            def close(self):
+                pass
+        self.stdout = _Out()
+
+    def poll(self):
+        return 1
+
+    def wait(self, timeout=None):
+        return 1
+
+
+def test_utf8_split_across_chunks(tmp_path):
+    chunks = [b"[E] cannot open 'C:\\Users\\Jos\xc3", b"\xa9\\m.gguf' --- x.cpp:1\n"]
+    eng = SdcppEngine(fake_paths(tmp_path), "cpu",
+                      popen=lambda argv, cwd, env=None: _FakeProc(chunks),
+                      mem_sampler=lambda pid: _Stub())
+    eng.load()
+    with pytest.raises(Invalid) as e:
+        run(eng)
+    assert "José" in str(e.value) and "\ufffd" not in str(e.value)
+
+
+def test_failure_details_recorded(tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_SD_CLI_FAIL", "ram_oom")
+    eng = SdcppEngine(fake_paths(tmp_path), "cpu")
+    eng.load()
+    with pytest.raises(Invalid) as e:
+        run(eng)
+    assert eng.last_failure["class"] == "ram_oom"
+    assert e.value.failure_class == "ram_oom"
+    assert any("bad_alloc" in ln for ln in eng.last_log_tail)
+
+
+def test_gpu_fallback_keeps_last_failure(tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_SD_CLI_FAIL", "gpu_oom")
+    eng = SdcppEngine(fake_paths(tmp_path), "vulkan0")
+    eng.load()
+    res, _ = run(eng)
+    assert res.image is not None
+    assert eng.last_failure["class"] == "gpu_oom"
+    assert eng.device == "cpu"
+
+
+def test_last_phases_on_success(tmp_path):
+    eng = SdcppEngine(fake_paths(tmp_path), "cpu")
+    eng.load()
+    run(eng)
+    assert isinstance(eng.last_phases, dict)
+    assert eng.last_log_tail
+    assert eng.last_failure is None
+
+
+def test_make_engine_tier_kwarg_beats_settings(tmp_path, monkeypatch):
+    from medimg import config
+    from medimg.engines import make_engine
+    from medimg.sdcpp import install
+    calls = []
+    monkeypatch.setattr(install, "resolve_paths",
+                        lambda b, t: calls.append((b, t)) or fake_paths(tmp_path))
+    monkeypatch.setattr(config, "load_settings", lambda *a, **k: config.Settings(sdcpp_tier="high"))
+    make_engine("sdcpp", {"backend": {"sdcpp": {"build": "linux-cpu-x64"}}}, tier="low")
+    assert calls[-1][1] == "low"

@@ -223,3 +223,11 @@ def test_old_glibc_stops_before_download(monkeypatch):
     monkeypatch.setattr(os, "confstr", lambda name: "glibc 2.35", raising=False)
     with pytest.raises(ModelUnavailable, match="2.38"):
         download.download_sdcpp("low", "linux-vulkan-x64", lambda m: None)
+
+
+def test_sdcpp_cached_models_only_when_build_none(monkeypatch):
+    monkeypatch.setattr(install, "binary_cached", lambda *a, **k: pytest.fail("binary checked"))
+    monkeypatch.setattr(install, "models_cached", lambda tier: {})
+    assert download.sdcpp_cached("low") is True
+    monkeypatch.setattr(install, "models_cached", lambda tier: None)
+    assert download.sdcpp_cached("low") is False

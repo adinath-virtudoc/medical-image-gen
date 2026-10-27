@@ -140,8 +140,14 @@ class ProgressParser:
             s.phase = "done"
 
 
-# NT statuses that mean memory exhaustion: NO_MEMORY, COMMITMENT_LIMIT, and the 0xC000012D page-file code
-_NT_OOM = {0xC0000017, 0xC00000FD, 0xC000012D}
+# NT statuses that mean memory exhaustion
+_NT_OOM = {0xC0000017, 0xC000012D}  # STATUS_NO_MEMORY, STATUS_COMMITMENT_LIMIT
+
+# Known NT crash statuses, named for the plain-language message
+NT_CRASH_NAMES = {0xC0000005: "access violation", 0xC00000FD: "stack overflow",
+                  0xC0000409: "stack buffer overrun", 0xC000001D: "illegal instruction",
+                  0xC0000135: "a required program library (DLL) was not found",
+                  0xC000007B: "a program file is damaged or for the wrong system"}
 
 
 def classify_failure(returncode: int | None, state: ParseState) -> tuple[str, str, str]:
@@ -160,7 +166,10 @@ def classify_failure(returncode: int | None, state: ParseState) -> tuple[str, st
                 "Run setup again; it re-downloads only what is missing.")
     cause = f"The image program stopped with code {returncode}."
     if returncode is not None and (returncode < 0 or returncode >= 0xC0000000):
-        cause = f"The image program crashed (code 0x{returncode & 0xFFFFFFFF:08X})."
+        code = returncode & 0xFFFFFFFF
+        name = NT_CRASH_NAMES.get(code)
+        cause = f"The image program crashed (code 0x{code:08X}" + (f", {name})." if name else ")."
+)
     for line in reversed(state.tail):
         m = _ERRLINE.match(line)
         if m:

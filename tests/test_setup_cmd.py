@@ -47,8 +47,13 @@ class World:
         monkeypatch.setattr(assess_pkg, "run", self._assess)
         self.settings = config.Settings(output_root=self.root)
         self.saved = []
+        self.saved_tiers = []
+
+        def _save(s, *a, **k):
+            self.saved.append(s.engine)
+            self.saved_tiers.append(s.sdcpp_tier)
         monkeypatch.setattr(config, "load_settings", lambda *a, **k: self.settings)
-        monkeypatch.setattr(config, "save_settings", lambda s, *a, **k: self.saved.append(s.engine))
+        monkeypatch.setattr(config, "save_settings", _save)
         monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
 
     def _download(self, progress=print):
@@ -167,9 +172,11 @@ class SdcppWorld(World):
         monkeypatch.setattr(install, "resolve_paths", lambda b, t, *a, **k: ("paths", b, t))
         self.bins = set()
         self.engine_seen = []
+        self.decide_kw = []
 
     def _decide(self, m, **kw):
         self.engine_seen.append(kw.get("engine"))
+        self.decide_kw.append(kw)
         return Decision("sdcpp", True, "No NVIDIA card: using sd.cpp.", "", None, False,
                         None, 5.0, 10.0, device="cpu", tier="low")
 
@@ -364,3 +371,39 @@ def test_auto_engine_passed_to_smoke_and_assess(monkeypatch, tmp_path):
     monkeypatch.setattr(assess_pkg, "run", lambda a: seen.append(a.engine) or 0)
     setup_cmd.run(Namespace(skip_smoke=False, skip_assess=False, yes=True, engine="auto"))
     assert seen == ["auto", "auto"]
+
+
+def test_tier_reaches_decide_smoke_and_assess(monkeypatch, tmp_path):
+    w = SdcppWorld(monkeypatch, tmp_path)
+    seen = []
+    monkeypatch.setattr(smoke, "run", lambda a: seen.append(("smoke", a.tier)) or 0)
+    monkeypatch.setattr(assess_pkg, "run", lambda a: seen.append(("assess", a.tier, a.retry_gpu)) or 0)
+    assert setup_cmd.run(_sd_args(tier="low")) == 0
+    assert w.decide_kw[0]["tier"] == "low"
+    assert seen == [("smoke", "low"), ("assess", "low", False)]
+
+
+def test_tier_saved_only_after_success_and_auto_clears(monkeypatch, tmp_path):
+    w = SdcppWorld(monkeypatch, tmp_path)
+    monkeypatch.setattr(install, "chosen_build", lambda *a, **k: None)
+    assert setup_cmd.run(_sd_args(tier="mid")) == 1
+    assert w.saved_tiers == []
+    monkeypatch.setattr(install, "chosen_build", lambda os_name, arch, *a, **k: w.build)
+    assert setup_cmd.run(_sd_args(tier="mid")) == 0
+    assert w.saved_tiers == ["mid"]
+    assert setup_cmd.run(_sd_args(tier="auto")) == 0
+    assert w.saved_tiers == ["mid", None] and w.decide_kw[-1]["tier"] is None
+
+
+def test_assess_done_false_when_device_not_proven(monkeypatch, tmp_path):
+    World(monkeypatch, tmp_path)
+
+    def prof(proven):
+        sd = {"tier": "low"}
+        if proven is not None:
+            sd["device_proven"] = proven
+        return {"benchmark": {"points": []}, "backend": {"name": "sdcpp", "device": "cpu", "sdcpp": sd},
+                "machine": {"cpu": "c"}}
+    for proven, want in ((False, False), (True, True), (None, True)):
+        monkeypatch.setattr(assess_pkg, "load_profile", lambda *a, p=prof(proven), **k: p)
+        assert setup_cmd._assess_done("sdcpp", "c") is want

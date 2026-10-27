@@ -1,4 +1,10 @@
-"""Child-process control for sd-cli: spawn in its own group, kill the whole tree, sample memory."""
+"""Child-process control for sd-cli: spawn in its own group, kill the whole tree, sample memory.
+
+Parent-death guarantee: sd-cli writes progress every step, so if this process dies (even
+SIGKILL) the stdout pipe closes and sd-cli is killed by SIGPIPE at its next write. The atexit
+`kill_all_live` and the server's lifespan abort cover normal exits. Windows uses a kill-on-close
+Job Object. No preexec_fn is used (it is unsafe when other threads exist).
+"""
 from __future__ import annotations
 
 import atexit
@@ -80,15 +86,6 @@ def _assign_to_job(proc: subprocess.Popen) -> None:
         pass
 
 
-def _pdeathsig() -> None:
-    """Linux preexec: SIGKILL this child if the parent dies."""
-    try:
-        import ctypes
-        ctypes.CDLL("libc.so.6", use_errno=True).prctl(1, signal.SIGKILL)  # PR_SET_PDEATHSIG
-    except Exception:
-        pass
-
-
 def kill_all_live(grace_s: float = 1.0) -> None:
     """Kill every sd-cli still running that this process started. Idempotent; never raises."""
     with _LIVE_LOCK:
@@ -110,9 +107,7 @@ def popen_group(argv: list[str], cwd: Path, *, env: dict | None = None) -> subpr
         kwargs["creationflags"] = (subprocess.CREATE_NEW_PROCESS_GROUP
                                    | subprocess.CREATE_NO_WINDOW)
     else:
-        kwargs["start_new_session"] = True
-        if sys.platform.startswith("linux"):
-            kwargs["preexec_fn"] = _pdeathsig
+        kwargs["start_new_session"] = True  # never preexec_fn: unsafe with threads
     proc = subprocess.Popen(argv, cwd=str(cwd), env=env, stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                             bufsize=0, **kwargs)

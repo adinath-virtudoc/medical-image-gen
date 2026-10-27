@@ -109,11 +109,16 @@ def download_diffusers(mode: str, progress: Callable[[str], None] = print) -> Pa
 _OS_OF_BUILD = {"win": "Windows", "linux": "Linux", "mac": "Darwin"}
 
 
-def sdcpp_cached(tier: str, build: str) -> bool:
-    """True when the sd-cli binary and every model file of the tier are already present. Offline."""
+def sdcpp_cached(tier: str, build: str | None = None) -> bool:
+    """True when every model file of the tier (and, if ``build`` is given, its sd-cli binary) is present.
+
+    Offline; never raises. ``build=None`` checks the model files only.
+    """
     try:
         from medimg.sdcpp import install
-        return install.binary_cached(build) is not None and install.models_cached(tier) is not None
+        if build is not None and install.binary_cached(build) is None:
+            return False
+        return install.models_cached(tier) is not None
     except Exception:
         return False
 

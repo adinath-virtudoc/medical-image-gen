@@ -16,7 +16,8 @@ def _find_gguf(name: str) -> Path | None:
         return None
 
 
-def make_engine(backend: str, profile: dict | None, *, fake: bool = False) -> Engine:
+def make_engine(backend: str, profile: dict | None, *, fake: bool = False,
+                tier: str | None = None) -> Engine:
     if fake or backend == "fake":
         from medimg.engines.fake_engine import FakeEngine
         return FakeEngine()
@@ -33,11 +34,11 @@ def make_engine(backend: str, profile: dict | None, *, fake: bool = False) -> En
             gguf_path = _find_gguf(config.GGUF_FILES["q4_k_m"][0])
         return DiffusersEngine(offload_mode=mode, gguf_path=gguf_path)
     if backend == "sdcpp":
-        return _make_sdcpp(profile)
+        return _make_sdcpp(profile, tier)
     raise ValueError(f"unknown backend: {backend!r}")
 
 
-def _make_sdcpp(profile: dict | None) -> Engine:
+def _make_sdcpp(profile: dict | None, tier: str | None = None) -> Engine:
     import platform
 
     import psutil
@@ -52,7 +53,7 @@ def _make_sdcpp(profile: dict | None) -> Engine:
     be = prof.get("backend") or {}
     sd = be.get("sdcpp") or {}
     device = settings.sdcpp_device or be.get("device") or "cpu"
-    tier = settings.sdcpp_tier or sd.get("tier")
+    tier = tier or settings.sdcpp_tier or sd.get("tier")
     if not tier:
         ram = (prof.get("machine") or {}).get("ram_total_gb")
         if not ram:

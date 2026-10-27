@@ -31,6 +31,11 @@ class Decision:
     min_disk_gb: float | None
     device: str | None = None       # sdcpp: "cpu" | "vulkan0" | "metal"
     tier: str | None = None         # sdcpp: "low" | "mid" | "high"
+    reason_code: str = "ok"         # one of REASON_CODES; "ok" when supported
+
+
+REASON_CODES = ("ok", "intel_mac", "ram", "disk", "amd", "no_nvidia", "no_smi", "driver", "vram",
+                "no_build")
 
 
 def _mflux_cached() -> bool:
@@ -39,8 +44,8 @@ def _mflux_cached() -> bool:
     return download.mflux_cached() is not None
 
 
-def _no(reason: str, fix: str = "") -> Decision:
-    return Decision(None, False, reason, fix, None, False, None, None, None)
+def _no(reason: str, fix: str = "", code: str = "unsupported") -> Decision:
+    return Decision(None, False, reason, fix, None, False, None, None, None, reason_code=code)
 
 
 def _ver(text: str | None) -> tuple[int, ...] | None:
@@ -65,11 +70,8 @@ def _nvidia_mode(vram: float) -> tuple[str | None, float]:
 
 def _sdcpp_cached(tier: str) -> bool:
     """True when every model file of the tier is in the local cache. Offline; never raises."""
-    try:
-        from medimg.sdcpp import install
-        return install.models_cached(tier) is not None
-    except Exception:
-        return False
+    from medimg import download
+    return download.sdcpp_cached(tier, None)
 
 
 def _sdcpp_device(m, ram: float) -> str:
@@ -81,21 +83,28 @@ def _sdcpp_device(m, ram: float) -> str:
     return "cpu"
 
 
-def _sdcpp(m, prefix: str = "") -> Decision:
+def _sdcpp(m, prefix: str = "", tier: str | None = None) -> Decision:
     """sd.cpp rules (PLAN_SDCPP 3.4). `prefix` is the reason it was chosen over CUDA."""
     from medimg.sdcpp import pins
     ram = m.ram_total_gb
     if m.os_name == "Darwin" and m.arch != "arm64":
         return _no("Intel Mac: Apple-silicon only.",
-                   "Use an Apple-silicon Mac (M1 or newer) or a PC with an NVIDIA GPU.")
+                   "Use an Apple-silicon Mac (M1 or newer) or a PC with an NVIDIA GPU.",
+                   "intel_mac")
+    if pins.build_for(m.os_name, m.arch) is None:
+        return _no(f"{prefix}There is no stable-diffusion.cpp program for {m.os_name} on this "
+                   f"processor type ({m.arch}).",
+                   "Use a 64-bit Intel or AMD (x86-64) Windows or Linux PC, or an Apple-silicon Mac.",
+                   "no_build")
     if ram < config.SDCPP_MIN_RAM_GB:
         return _no(f"{prefix}This computer has {ram:g} GB of RAM; at least 8 GB is needed.",
-                   "Use a computer with 8 GB or more.")
-    try:
-        override = config.load_settings().sdcpp_tier
-    except Exception:
-        override = None
-    tier = override or pins.tier_for_ram(ram)
+                   "Use a computer with 8 GB or more.", "ram")
+    if tier is None:
+        try:
+            tier = config.load_settings().sdcpp_tier
+        except Exception:
+            tier = None
+    tier = tier or pins.tier_for_ram(ram)
     device = _sdcpp_device(m, ram)
     cached = _sdcpp_cached(tier)
     download = 0.0 if cached else pins.TIER_GB[tier]
@@ -103,7 +112,7 @@ def _sdcpp(m, prefix: str = "") -> Decision:
     if m.disk_free_gb < need:
         return _no(f"{prefix}Not enough disk space: {m.disk_free_gb:.1f} GB free at {m.disk_path}, "
                    f"need {need:.1f} GB ({download:g} GB download + {config.DISK_MARGIN_GB} GB margin).",
-                   "Free up disk space and run assess again.")
+                   "Free up disk space and run assess again.", "disk")
     where = {"cpu": "on the processor", "vulkan0": "on the graphics chip (Vulkan, tried first)",
              "metal": "on the Apple graphics chip (Metal)"}[device]
     span = {"low": "under 12 GB RAM", "mid": "12-24 GB RAM", "high": "24 GB RAM or more"}[tier]
@@ -115,16 +124,16 @@ def _sdcpp(m, prefix: str = "") -> Decision:
                     device, tier)
 
 
-def decide(m, *, engine: str | None = None) -> Decision:
+def decide(m, *, engine: str | None = None, tier: str | None = None) -> Decision:
     if engine == "sdcpp":
-        return _sdcpp(m)
+        return _sdcpp(m, tier=tier)
     d = _decide_native(m)
     if (not d.supported and engine in (None, "auto") and m.os_name in ("Windows", "Linux")
-            and "Not enough disk space" not in d.reason):
+            and d.reason_code != "disk"):
         why = d.reason.rstrip()
         if not why.endswith((".", "!")):
             why += "."
-        return _sdcpp(m, why + " ")
+        return _sdcpp(m, why + " ", tier=tier)
     return d
 
 
@@ -135,47 +144,47 @@ def _decide_native(m) -> Decision:
     if m.os_name == "Darwin":
         if m.arch != "arm64":
             return _no("Intel Mac: Apple-silicon only.",
-                       "Use an Apple-silicon Mac (M1 or newer) or a PC with an NVIDIA GPU.")
+                       "Use an Apple-silicon Mac (M1 or newer) or a PC with an NVIDIA GPU.", "intel_mac")
         if m.ram_total_gb < MIN_RAM_MFLUX_GB:
             return _no(f"Apple silicon with {m.ram_total_gb:g} GB RAM: at least 16 GB is needed.",
-                       "Use a Mac with 16 GB or more memory.")
+                       "Use a Mac with 16 GB or more memory.", "ram")
         cached = _mflux_cached()
         download = 0.0 if cached else config.MFLUX_MODEL_GB
         need = 0.0 if cached else config.MFLUX_MODEL_GB + config.DISK_MARGIN_GB
         if m.disk_free_gb < need:
             return _no(f"Not enough disk space: {m.disk_free_gb:.1f} GB free at {m.disk_path}, "
                        f"need {need:.1f} GB ({config.MFLUX_MODEL_GB} GB model + "
-                       f"{config.DISK_MARGIN_GB} GB margin).", "Free up disk space and run assess again.")
+                       f"{config.DISK_MARGIN_GB} GB margin).", "Free up disk space and run assess again.", "disk")
         return Decision("mflux", True,
                         f"Apple silicon with {m.ram_total_gb:g} GB"
                         + (" (model already downloaded)" if cached else ""),
                         "", None, m.ram_total_gb <= 16.5, config.MFLUX_MODEL_ID, download, need)
 
     if vendor == "amd":
-        return _no("AMD GPUs are not supported in v1.", "Use an NVIDIA GPU or an Apple-silicon Mac.")
+        return _no("AMD GPUs are not supported in v1.", "Use an NVIDIA GPU or an Apple-silicon Mac.", "amd")
     if vendor != "nvidia":
         return _no("No NVIDIA GPU found.", "Use a PC with an NVIDIA GPU (8 GB VRAM or more) "
-                   "or an Apple-silicon Mac.")
+                   "or an Apple-silicon Mac.", "no_nvidia")
     if gpu.get("driver") is None and gpu.get("vram_gb") is None:
         return _no(f"{gpu.get('name', 'An NVIDIA GPU')} was found but nvidia-smi is not available.",
-                   "Install the NVIDIA driver, then run assess again.")
+                   "Install the NVIDIA driver, then run assess again.", "no_smi")
 
     minimum = DRIVER_MIN.get(m.os_name, DRIVER_MIN["Linux"])
     drv = _ver(gpu.get("driver"))
     if drv is not None and drv < minimum:
         return _no(f"NVIDIA driver {gpu['driver']} is older than {minimum[0]}.{minimum[1]:02d}, "
-                   "which CUDA 12.8 needs.", "Update the NVIDIA driver and run assess again.")
+                   "which CUDA 12.8 needs.", "Update the NVIDIA driver and run assess again.", "driver")
 
     vram = float(gpu.get("vram_gb") or 0)
     mode, download = _nvidia_mode(vram)
     if mode is None:
         return _no(f"The GPU has {vram:g} GB of VRAM; at least 8 GB is needed.",
-                   "Use a GPU with 8 GB of VRAM or more.")
+                   "Use a GPU with 8 GB of VRAM or more.", "vram")
     need = round(download + config.DISK_MARGIN_GB, 1)
     if m.disk_free_gb < need:
         return _no(f"Not enough disk space: {m.disk_free_gb:.1f} GB free at {m.disk_path}, "
                    f"need {need:.1f} GB ({download:g} GB download + {config.DISK_MARGIN_GB} GB margin).",
-                   "Free up disk space and run assess again.")
+                   "Free up disk space and run assess again.", "disk")
     reason = f"NVIDIA {gpu.get('name', 'GPU')} with {vram:g} GB VRAM: {mode} mode"
     if mode in (GGUF_Q8, GGUF_Q4):
         reason += " (experimental, quantized model)"

@@ -210,25 +210,6 @@ def download_models(tier: str, progress=print) -> dict[str, Path]:
     return out
 
 
-def list_devices(sd_cli: tuple[str, ...], cwd: Path, run=subprocess.run) -> list[tuple[str, str]]:
-    try:
-        r = run([*sd_cli, "--list-devices"], cwd=str(cwd), capture_output=True, text=True, timeout=60)
-    except subprocess.TimeoutExpired as e:
-        raise ModelUnavailable("Listing graphics devices took too long.", "Run setup again.") from e
-    except OSError as e:
-        raise ModelUnavailable(f"Could not run sd-cli: {e}", _FIX_SETUP) from e
-    if r.returncode != 0:
-        raise ModelUnavailable(f"sd-cli could not list devices (exit code {r.returncode}).",
-                               "Run setup again.")
-    devices = []
-    for line in (r.stdout or "").splitlines():
-        if "\t" in line:
-            name, desc = line.split("\t", 1)
-            if name.strip():
-                devices.append((name.strip(), desc.strip()))
-    return devices
-
-
 _VCREDIST_URL = "https://aka.ms/vs/17/release/vc_redist.x64.exe"
 _DLL_NOT_FOUND = (0xC0000135, 0xC000007B)  # STATUS_DLL_NOT_FOUND, STATUS_INVALID_IMAGE_FORMAT
 
@@ -237,11 +218,11 @@ def _nt_code(rc: int) -> int:
     return rc & 0xFFFFFFFF if rc < 0 else rc
 
 
-def health_check(sd_cli: tuple[str, ...], cwd: Path, run=subprocess.run) -> str:
-    """Start sd-cli far enough to load its backends (``--list-devices``), not just parse arguments.
+def _run_list_devices(sd_cli: tuple[str, ...], cwd: Path, run=subprocess.run):
+    """The ONE place that runs ``sd-cli --list-devices``; raises ModelUnavailable with rich messages.
 
     ``--version`` exits before any ggml backend DLL is loaded, so it cannot catch a broken Vulkan
-    driver. ``--list-devices`` initialises the backends; a healthy build always lists a CPU device.
+    driver. ``--list-devices`` initialises the backends.
     """
     try:
         r = run([*sd_cli, "--list-devices"], cwd=str(cwd), capture_output=True, text=True, timeout=60)
@@ -260,14 +241,31 @@ def health_check(sd_cli: tuple[str, ...], cwd: Path, run=subprocess.run) -> str:
         detail = next((ln.strip() for ln in ((getattr(r, "stderr", "") or "") + "\n" + (r.stdout or "")).splitlines()
                        if ln.strip()), "")
         shown = f"{rc} / 0x{code:08X}" if code >= 0x80000000 else str(rc)
-        raise ModelUnavailable(f"sd-cli failed its self-check (exit code {shown})"
+        raise ModelUnavailable(f"sd-cli could not start (exit code {shown})"
                                + (f": {detail[:300]}" if detail else "") + ".",
                                "Run setup again.")
-    names = [ln.split("\t", 1)[0].strip() for ln in (r.stdout or "").splitlines() if "\t" in ln]
+    return r
+
+
+def list_devices(sd_cli: tuple[str, ...], cwd: Path, run=subprocess.run) -> list[tuple[str, str]]:
+    r = _run_list_devices(sd_cli, cwd, run)
+    devices = []
+    for line in (r.stdout or "").splitlines():
+        if "\t" in line:
+            name, desc = line.split("\t", 1)
+            if name.strip():
+                devices.append((name.strip(), desc.strip()))
+    return devices
+
+
+def health_check(sd_cli: tuple[str, ...], cwd: Path, run=subprocess.run) -> str:
+    """Start sd-cli far enough to load its backends; a healthy build always lists a CPU device."""
+    devices = list_devices(sd_cli, cwd, run)
+    names = [n for n, _ in devices]
     if not any(n.upper().startswith("CPU") for n in names):
         raise ModelUnavailable("sd-cli started but did not list a processor device.",
                                "Run setup again; if it repeats, report it.")
-    return "devices: " + ", ".join(n for n in names if n)
+    return "devices: " + ", ".join(names)
 
 
 def resolve_paths(build: str, tier: str, *, tools_dir: Path = TOOLS_DIR) -> SdcppPaths:

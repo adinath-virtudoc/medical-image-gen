@@ -9,6 +9,7 @@ import importlib
 decide_module = importlib.import_module("medimg.assess.decide")
 
 ORIG_CACHED = decide_module._mflux_cached
+ORIG_SDCPP_CACHED = decide_module._sdcpp_cached
 
 
 @pytest.fixture(autouse=True)
@@ -172,6 +173,7 @@ def test_field_laptop():
     assert d.download_gb == 5.0 and d.unload_after_job is False
     assert d.offload_mode is None and d.model_id == "leejet/Z-Image-Turbo-GGUF"
     assert "processor" in d.reason and "low" in d.reason and "under 12 GB" in d.reason
+    assert d.reason_code == "ok"
 
 
 def test_no_gpu_16gb_is_mid_cpu():
@@ -229,7 +231,7 @@ def test_sdcpp_cache_check_never_raises(monkeypatch):
         raise RuntimeError("offline")
 
     monkeypatch.setattr(install, "models_cached", boom)
-    assert decide_module._sdcpp_cached("low") is False
+    assert ORIG_SDCPP_CACHED("low") is False
 
 
 def test_intel_mac_unsupported_even_with_engine():
@@ -262,3 +264,60 @@ def test_sdcpp_tier_setting_overrides_ram(monkeypatch):
     monkeypatch.setattr(config, "load_settings", lambda *a, **k: config.Settings(sdcpp_tier="low"))
     d = decide(machine(ram_total_gb=16.0), engine="sdcpp")
     assert d.tier == "low"
+
+
+@pytest.mark.parametrize("os_name,arch,gpu", [("Linux", "aarch64", None), ("Windows", "arm64", igpu())])
+def test_arm64_linux_and_windows_not_supported_without_build(os_name, arch, gpu):
+    m = machine(os_name=os_name, arch=arch, gpu=gpu, ram_total_gb=16.0)
+    for d in (decide(m), decide(m, engine="sdcpp")):
+        assert d.supported is False and d.backend is None
+        assert d.reason_code == "no_build" and "processor type" in d.reason
+    d = decide(mac(), engine="sdcpp")
+    assert (d.backend, d.device) == ("sdcpp", "metal")
+
+
+def test_disk_fallback_uses_reason_code_not_text(monkeypatch):
+    m = machine(gpu=None)
+    monkeypatch.setattr(decide_module, "_decide_native",
+                        lambda m: decide_module._no("Disk is too full here.", "x", "disk"))
+    d = decide(m)
+    assert not d.supported and d.reason == "Disk is too full here." and d.backend is None
+    monkeypatch.setattr(decide_module, "_decide_native",
+                        lambda m: decide_module._no("Disk is too full here.", "x", "no_nvidia"))
+    assert decide(m).backend == "sdcpp"
+
+
+def test_sdcpp_cached_delegates_to_download(monkeypatch):
+    from medimg import download
+    calls = []
+    monkeypatch.setattr(download, "sdcpp_cached", lambda *a: calls.append(a) or True)
+    assert ORIG_SDCPP_CACHED("low") is True
+    assert calls == [("low", None)]
+
+
+def test_reason_codes_cover_native_paths():
+    def amd():
+        return {"vendor": "amd", "name": "R", "vram_gb": None, "driver": None, "cuda": None}
+    native = decide_module._decide_native
+    assert native(machine(os_name="Darwin", arch="x86_64")).reason_code == "intel_mac"
+    assert native(mac(8.0)).reason_code == "ram"
+    assert native(mac(disk_free_gb=1.0)).reason_code == "disk"
+    assert native(machine(gpu=nv(24.0), disk_free_gb=1.0)).reason_code == "disk"
+    assert native(machine(gpu=amd())).reason_code == "amd"
+    assert native(machine(gpu=None)).reason_code == "no_nvidia"
+    assert native(machine(gpu={"vendor": "nvidia", "name": "X", "vram_gb": None,
+                               "driver": None, "cuda": None})).reason_code == "no_smi"
+    assert native(machine(gpu=nv(24.0, "560.94"))).reason_code == "driver"
+    assert native(machine(gpu=nv(6.0))).reason_code == "vram"
+    assert decide(machine(gpu=None, ram_total_gb=6.0)).reason_code == "ram"
+    assert decide(machine(gpu=None, ram_total_gb=7.7, disk_free_gb=8.0)).reason_code == "disk"
+    assert decide(machine(os_name="Linux", arch="aarch64", gpu=None)).reason_code == "no_build"
+    assert decide(mac()).reason_code == "ok"
+    assert set(decide_module.REASON_CODES) >= {"ok", "intel_mac", "ram", "disk", "amd", "no_nvidia",
+                                               "no_smi", "driver", "vram", "no_build"}
+
+
+def test_tier_kwarg_beats_settings(monkeypatch):
+    from medimg import config
+    monkeypatch.setattr(config, "load_settings", lambda *a, **k: config.Settings(sdcpp_tier="high"))
+    assert decide(machine(ram_total_gb=16.0), engine="sdcpp", tier="low").tier == "low"

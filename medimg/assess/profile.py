@@ -44,11 +44,22 @@ def build_profile(machine, decision, benchmark: dict | None = None, *, actuals: 
                     "reason": decision.reason, "fix": decision.fix,
                     "model_id": decision.model_id, "offload_mode": decision.offload_mode,
                     "unload_after_job": decision.unload_after_job,
-                    "engine_version": engine_version, "device": device, "sdcpp": sdcpp},
+                    "engine_version": engine_version, "device": device, "sdcpp": sdcpp,
+                    "reason_code": getattr(decision, "reason_code", None)},
         "benchmark": benchmark,
         "actuals": list(actuals or []),
         "notes": list(notes or []),
     }
+
+
+def profile_matches(profile: dict | None, engine_name: str) -> bool:
+    """True when the profile belongs to this engine (fake engine and nameless profiles always match)."""
+    if profile is None:
+        return False
+    if engine_name == "fake":
+        return True
+    name = (profile.get("backend") or {}).get("name")
+    return name is None or name == engine_name
 
 
 def record_actual(profile: dict, width: int, height: int, steps: int, time_s: float) -> dict:

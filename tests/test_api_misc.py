@@ -234,3 +234,11 @@ def test_main_binds_loopback_via_uvicorn(monkeypatch, tmp_path):
     assert rc == 0
     assert seen == {"host": "127.0.0.1", "port": port, "workers": 1, "reload": False}
     assert (tmp_path / "out" / "_sheets").is_dir()
+
+
+def test_open_folder_delegates_to_osutil(monkeypatch, tmp_path):
+    from medimg import osutil
+    got = []
+    monkeypatch.setattr(osutil, "open_folder", lambda f: got.append(f) or True)
+    assert server._open_folder(tmp_path) is True
+    assert got == [tmp_path]

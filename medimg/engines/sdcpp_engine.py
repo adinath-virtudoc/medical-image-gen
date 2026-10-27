@@ -1,6 +1,7 @@
 """stable-diffusion.cpp engine: one `sd-cli` child process per image. No heavy imports."""
 from __future__ import annotations
 
+import codecs
 import logging
 import queue
 import shutil
@@ -48,9 +49,9 @@ def _error_for(cls: str, cause: str, fix: str) -> MedimgError:
 
 
 class _Failed(Exception):
-    def __init__(self, cls: str, cause: str, fix: str) -> None:
+    def __init__(self, cls: str, cause: str, fix: str, rc: int | None = None) -> None:
         super().__init__(cause)
-        self.cls, self.cause, self.fix = cls, cause, fix
+        self.cls, self.cause, self.fix, self.rc = cls, cause, fix, rc
 
 
 class SdcppEngine:
@@ -71,6 +72,9 @@ class SdcppEngine:
         # so benchmark() can separate step time from load/encode/decode. None if sd-cli printed none.
         self.last_timing: dict | None = None
         self._last_sample_s: float | None = None
+        self.last_failure: dict | None = None
+        self.last_log_tail: list[str] = []
+        self.last_phases: dict | None = None
 
     def load(self, on_progress: ProgressFn | None = None) -> None:
         if self.loaded:
@@ -98,6 +102,9 @@ class SdcppEngine:
             raise RuntimeError("engine not loaded")
         t0 = time.perf_counter()
         self.last_timing = None
+        self.last_failure = None
+        self.last_log_tail = []
+        self.last_phases = None
         fell_back = False
         attempt = 0
         while True:
@@ -106,12 +113,16 @@ class SdcppEngine:
                 image, peak, ran_steps = self._run_once(prompt, seed, steps, width, height,
                                                         on_progress, should_cancel)
             except _Failed as f:
+                self.last_failure = {"class": f.cls, "cause": f.cause, "fix": f.fix,
+                                     "returncode": f.rc}
                 if f.cls not in ("no_model", "ram_oom") and self.device != "cpu" and attempt == 1:
                     self.device = "cpu"
                     self.notes.append(FALLBACK_NOTE if f.cls == "gpu_oom" else FALLBACK_NOTE_OTHER)
                     fell_back = True
                     continue
-                raise _error_for(f.cls, f.cause, f.fix) from None
+                err = _error_for(f.cls, f.cause, f.fix)
+                err.failure_class = f.cls
+                raise err from None
             break
         total_s = time.perf_counter() - t0
         if self._last_sample_s:
@@ -155,6 +166,7 @@ class SdcppEngine:
             rt = threading.Thread(target=reader, daemon=True, name="medimg-sdcpp-reader")
             rt.start()
             parser = ProgressParser()
+            dec = codecs.getincrementaldecoder("utf-8")(errors="replace")
             seen_n = 0
             while True:
                 if should_cancel():
@@ -164,9 +176,10 @@ class SdcppEngine:
                     chunk = q.get(timeout=self._poll_s)
                 except queue.Empty:
                     continue
-                if chunk is None:
+                eof = chunk is None
+                text = dec.decode(b"", final=True) if eof else dec.decode(chunk)
+                if eof and not text:
                     break
-                text = chunk.decode("utf-8", errors="replace")
                 for line in text.replace("\r", "\n").split("\n"):
                     line = line.replace("\x1b[K", "").rstrip()
                     if line:
@@ -179,6 +192,8 @@ class SdcppEngine:
                     if should_cancel():
                         kill_tree(proc)
                         raise Cancelled()
+                if eof:
+                    break
             try:
                 rc = proc.wait(timeout=30)
             except Exception:
@@ -189,13 +204,16 @@ class SdcppEngine:
             sampler = None
             st = parser.state
             self._last_sample_s = st.sample_s
+            self.last_log_tail = list(st.tail)
+            self.last_phases = {"encode_s": st.encode_s, "sample_s": st.sample_s,
+                                "decode_s": st.decode_s, "total_s": st.total_s}
             if rc == 0 and st.saved_ok and out.is_file():
                 with Image.open(out) as im:
                     im.load()
                     image = im.copy()
                 return image, peak, seen_n or steps
             cls, cause, fix = classify_failure(rc, st)
-            raise _Failed(cls, cause, fix)
+            raise _Failed(cls, cause, fix, rc)
         finally:
             if proc is not None:
                 if proc.poll() is None:

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from medimg.assess.estimate import estimates_table
+from medimg import config
 from medimg.config import DEFAULT_STEPS
 
 
@@ -64,9 +65,13 @@ def render_report(profile: dict) -> str:
     for n in profile.get("notes") or []:
         lines.append(f"Note     : {n}")
     lines.append("")
-    rows = estimates_table(profile, DEFAULT_STEPS)
+    if b.get("name") == "sdcpp":
+        steps, presets = config.SDCPP_DEFAULT_STEPS, config.SDCPP_SIZE_PRESETS
+    else:
+        steps, presets = DEFAULT_STEPS, config.SIZE_PRESETS
+    rows = estimates_table(profile, steps, presets)
     if rows:
-        lines.append(f"Estimated time at {DEFAULT_STEPS} steps")
+        lines.append(f"Estimated time at {steps} steps")
         lines.append(f"{'Size':<22}{'1 image':>10}{'10 images':>12}{'25 images':>12}{'50 images':>12}")
         for r in rows:
             lines.append(f"{r['label']:<22}{fmt_duration(r['seconds']):>10}{fmt_duration(r['for_10']):>12}"

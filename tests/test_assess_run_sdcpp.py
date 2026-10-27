@@ -1,6 +1,7 @@
 """assess.run() for the sdcpp backend: device choice, Vulkan try with CPU fallback, profile keys."""
 from __future__ import annotations
 
+import inspect
 import json
 import types
 
@@ -44,7 +45,7 @@ def env(tmp_path, monkeypatch):
     ns = types.SimpleNamespace(path=path, made=[], bench_calls=[], devices=[("Vulkan0", "x"), ("CPU", "y")],
                                fail_devices=set(), sizes=[])
 
-    def make(backend, profile, fake=False):
+    def make(backend, profile, fake=False, **kw):
         dev = profile["backend"]["device"]
         ns.made.append((backend, dev, profile["backend"]["sdcpp"]))
         return StubEngine(dev)
@@ -84,6 +85,7 @@ def test_vulkan_failure_falls_back_to_cpu(env, capsys):
     assert b["engine_version"] == f"sdcpp {config.SDCPP_RELEASE_TAG}"
     assert any("Graphics chip benchmark failed on vulkan0: ErrorOutOfDeviceMemory; using the processor" in n
                for n in saved["notes"])
+    assert b["sdcpp"]["device_proven"] is True and b["sdcpp"]["failed_devices"] == ["vulkan0"]
     assert saved["benchmark"]["points"][0]["total_s"] == 100.0       # points from the cpu run
     assert env.sizes == [assess.SDCPP_BENCH_SIZES] * 2
     assert assess.SDCPP_BENCH_SIZES == ((512, 512, 4), (768, 768, 2))
@@ -127,6 +129,7 @@ def test_no_benchmark_skips_everything(env, capsys):
     saved = json.loads(env.path.read_text())
     assert env.bench_calls == [] and env.made == []
     assert saved["benchmark"] is None and saved["backend"]["device"] == "vulkan0"
+    assert saved["backend"]["sdcpp"]["device_proven"] is False
     assert saved["backend"]["sdcpp"]["tier"] == "mid"
 
 
@@ -139,21 +142,22 @@ def test_settings_device_override(env, monkeypatch, capsys):
 def test_engine_arg_none_falls_back_to_settings(env, monkeypatch, capsys):
     monkeypatch.setattr(config, "load_settings", lambda: config.Settings(engine="sdcpp"))
     assess.run(args(no_benchmark=True))
-    assert env.decide_kw[-1] == {"engine": "sdcpp"}
+    assert env.decide_kw[-1] == {"engine": "sdcpp", "tier": None}
     monkeypatch.setattr(config, "load_settings", lambda: config.Settings())
     assess.run(args(no_benchmark=True))
-    assert env.decide_kw[-1] == {"engine": None}
+    assert env.decide_kw[-1] == {"engine": None, "tier": None}
     assess.run(args(no_benchmark=True, engine="auto"))
-    assert env.decide_kw[-1] == {"engine": None}
+    assert env.decide_kw[-1] == {"engine": None, "tier": None}
     assess.run(args(no_benchmark=True, engine="sdcpp"))
-    assert env.decide_kw[-1] == {"engine": "sdcpp"}
+    assert env.decide_kw[-1] == {"engine": "sdcpp", "tier": None}
 
 
 def test_keeps_previous_benchmark_only_when_device_and_tier_match(env, capsys):
     first = build_profile(MACHINE, decision("cpu", "mid"), {"measured_at": "old", "load_s": 1, "points": [],
                                                            "fit": None},
-                          device="cpu", sdcpp={"release": "r", "build": "b", "tier": "mid",
-                                               "vulkan_tried": False, "vulkan_error": None})
+                          device="cpu", sdcpp={"release": config.SDCPP_RELEASE_TAG, "build": "win-vulkan-x64",
+                                               "tier": "mid", "vulkan_tried": False, "vulkan_error": None,
+                                               "device_proven": True, "failed_devices": []})
     assess.save_profile(first, env.path)
     env.set_decision(decision("cpu", "mid"))
     assess.run(args(no_benchmark=True))
@@ -198,8 +202,68 @@ def test_real_engine_silent_fallback_is_detected(env, monkeypatch, tmp_path):
     monkeypatch.setenv("FAKE_SD_CLI_FAIL", "gpu_oom")
     monkeypatch.setattr(assess, "benchmark", real_bench)
     monkeypatch.setattr(engines, "make_engine",
-                        lambda backend, profile, fake=False: SdcppEngine(paths, profile["backend"]["device"]))
+                        lambda backend, profile, fake=False, **kw: SdcppEngine(paths, profile["backend"]["device"]))
     assess.run(args())
     saved = json.loads(env.path.read_text())
     assert saved["backend"]["device"] == "cpu"
     assert saved["backend"]["sdcpp"]["vulkan_error"]
+    assert all("processor.; using the processor" not in n for n in saved["notes"])
+
+
+def _dev(env):
+    return json.loads(env.path.read_text())
+
+
+def test_no_benchmark_after_fallback_keeps_proven_cpu(env, capsys):
+    env.fail_devices = {"vulkan0"}
+    assess.run(args())
+    first = _dev(env)
+    env.bench_calls.clear()
+    assess.run(args(no_benchmark=True))
+    saved = _dev(env)
+    assert env.bench_calls == []
+    assert saved["backend"]["device"] == "cpu"
+    assert saved["benchmark"]["measured_at"] == first["benchmark"]["measured_at"]
+    assert saved["actuals"] == first["actuals"]
+    assert saved["backend"]["sdcpp"]["device_proven"] is True
+    assert saved["backend"]["sdcpp"]["failed_devices"] == ["vulkan0"]
+
+
+def test_failed_gpu_not_reselected(env, monkeypatch, capsys):
+    env.fail_devices = {"vulkan0"}
+    assess.run(args())
+    env.bench_calls.clear()
+    assess.run(args())
+    assert env.bench_calls == ["cpu"]
+    assert any("--retry-gpu" in n for n in _dev(env)["notes"])
+    env.bench_calls.clear()
+    assess.run(args(retry_gpu=True))
+    assert env.bench_calls == ["vulkan0", "cpu"]
+    env.bench_calls.clear()
+    monkeypatch.setattr(config, "load_settings", lambda: config.Settings(sdcpp_device="vulkan0"))
+    assess.run(args())
+    assert env.bench_calls[0] == "vulkan0"
+
+
+def test_cpu_benchmark_failure_keeps_full_state(env, capsys):
+    env.fail_devices = {"vulkan0", "cpu"}
+    assert assess.run(args()) == 0
+    saved = _dev(env)
+    sd = saved["backend"]["sdcpp"]
+    assert saved["backend"]["device"] == "cpu" and saved["benchmark"] is None
+    assert sd["vulkan_tried"] is True and sd["vulkan_error"]
+    assert sd["device_proven"] is False and sd["failed_devices"] == ["vulkan0"]
+    assert any("Graphics chip benchmark failed on vulkan0" in n for n in saved["notes"])
+    assert any("Benchmark failed on the processor" in n for n in saved["notes"])
+
+
+def test_run_sdcpp_signature_has_no_dead_params():
+    assert list(inspect.signature(assess._run_sdcpp).parameters) == [
+        "machine", "decision", "settings", "no_benchmark", "prior", "retry_gpu"]
+
+
+def test_tier_arg_passed_to_decide(env, capsys):
+    assess.run(args(no_benchmark=True, tier="low"))
+    assert env.decide_kw[-1]["tier"] == "low"
+    assess.run(args(no_benchmark=True, tier="auto"))
+    assert env.decide_kw[-1]["tier"] is None

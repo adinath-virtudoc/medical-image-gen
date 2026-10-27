@@ -4,9 +4,11 @@ from __future__ import annotations
 import time
 from datetime import datetime
 
+from medimg import rules
 from medimg.assess.estimate import REF_PIXELS, fit
+from medimg.errors import Blocked
 
-BENCH_PROMPT = "a simple anatomical line drawing of a human hand, white background"
+BENCH_PROMPT = "a simple anatomical line drawing of an adult human hand, white background"
 
 
 def benchmark(engine, *, sizes=((512, 512, 4), (1024, 1024, 2))) -> dict:
@@ -14,6 +16,9 @@ def benchmark(engine, *, sizes=((512, 512, 4), (1024, 1024, 2))) -> dict:
 
     Overhead (load/encode/decode) cannot be separated from step time with two short runs, so it is
     modelled as the measured load time scaled by sqrt(pixels / 512x512), capped at half the run."""
+    reason = rules.check_prompt(BENCH_PROMPT)
+    if reason is not None:
+        raise Blocked(reason, rules.HINT)
     t0 = time.perf_counter()
     engine.load()
     load_s = time.perf_counter() - t0

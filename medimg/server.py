@@ -24,8 +24,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from medimg import config, names, rules, sheet
-from medimg.assess import (estimate_seconds, estimates_table, load_profile, render_report)
+from medimg import config, names, osutil, rules, sheet
+from medimg.assess import (estimate_seconds, estimates_table, load_profile, profile_matches,
+                           render_report)
 from medimg.errors import (Blocked, Busy, Invalid, MedimgError, ModelUnavailable, NotFound,
                            Unsupported)
 from medimg.jobs import JobSpec, RowJob, parse_size, random_seed
@@ -53,18 +54,8 @@ def _err(status: int, cause: str, fix: str = "") -> JSONResponse:
 
 
 def _open_folder(folder: Path) -> bool:
-    """Open a folder in the system file manager. Only ever called with a store-resolved path."""
-    if sys.platform == "darwin":
-        cmd = ["open", str(folder)]
-    elif sys.platform.startswith("win"):
-        cmd = ["explorer", str(folder)]
-    else:
-        cmd = ["xdg-open", str(folder)]
-    try:
-        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return True
-    except OSError:
-        return False
+    """Open a folder in the system file manager (see osutil). Only called with a store-resolved path."""
+    return osutil.open_folder(folder)
 
 
 class _SheetRef:
@@ -137,14 +128,12 @@ class EstimateRequest(BaseModel):
 
 
 # --------------------------------------------------------------------------- app factory
-def _sdcpp_table(profile: dict, steps: int) -> list[dict]:
-    """Estimates for the sd.cpp size presets (the shared table only covers the older six sizes)."""
-    rows = []
-    for label, w, h in config.SDCPP_SIZE_PRESETS:
-        sec = float(estimate_seconds(profile, w, h, steps))
-        rows.append({"label": label, "width": w, "height": h, "seconds": sec,
-                     "for_10": sec * 10, "for_25": sec * 25, "for_50": sec * 50})
-    return rows
+def _profile_for_engine(saved: dict | None, be: dict) -> dict:
+    """Profile for the chosen engine; a profile saved for another engine keeps only the machine."""
+    saved = saved or {}
+    if (saved.get("backend") or {}).get("name") == be.get("name"):
+        return {**saved, "backend": be}
+    return {**saved, "backend": be, "benchmark": None, "actuals": [], "notes": []}
 
 
 def create_app(engine, settings: config.Settings, profile: dict | None, *,
@@ -163,7 +152,8 @@ def create_app(engine, settings: config.Settings, profile: dict | None, *,
 
     def current_profile() -> dict | None:
         try:
-            return load_profile(profile_path) or profile
+            f = load_profile(profile_path)
+            return f if (f and profile_matches(f, engine.name)) else profile
         except Exception:
             return profile
 
@@ -598,8 +588,9 @@ def create_app(engine, settings: config.Settings, profile: dict | None, *,
                 report = ""
             try:
                 if engine.name == "sdcpp":
-                    table = _sdcpp_table(p, settings.steps if getattr(settings, "steps_explicit", False)
-                                         else config.SDCPP_DEFAULT_STEPS)
+                    table = estimates_table(
+                        p, settings.steps if getattr(settings, "steps_explicit", False)
+                        else config.SDCPP_DEFAULT_STEPS, presets=config.SDCPP_SIZE_PRESETS)
                 else:
                     table = estimates_table(p, settings.steps)
             except Exception:
@@ -743,7 +734,7 @@ def main(args) -> int:
                 if not be["sdcpp"]["build"]:
                     be.pop("sdcpp")
             # keep machine/benchmark/actuals of an existing profile; never write it back
-            profile = {**(profile or {}), "backend": be}
+            profile = _profile_for_engine(profile, be)
         engine = make_engine(backend, profile)
 
     app = create_app(engine, settings, profile)

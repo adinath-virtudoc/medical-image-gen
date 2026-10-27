@@ -31,7 +31,7 @@ def test_profile_has_schema_v1_keys():
                                  "ram_free_gb", "gpu", "disk_free_gb", "disk_path", "python", "uv", "arch"}
     assert set(p["machine"]["gpu"]) == {"vendor", "name", "vram_gb", "driver", "cuda"}
     assert set(p["backend"]) == {"name", "supported", "reason", "fix", "model_id", "offload_mode", "device", "sdcpp",
-                                 "unload_after_job", "engine_version"}
+                                 "unload_after_job", "engine_version", "reason_code"}
     assert set(p["benchmark"]) == {"measured_at", "load_s", "points", "fit"}
     assert p["actuals"] == [] and p["notes"] == []
     json.dumps(p)  # serialisable
@@ -127,3 +127,30 @@ def test_run_benchmark_failure_becomes_a_note(patched, monkeypatch, capsys):
     monkeypatch.setattr(engines, "make_engine", boom)
     assert assess.run(args(no_benchmark=False)) == 0
     assert "Benchmark failed: no model" in json.loads(patched.read_text())["notes"][0]
+
+
+def test_profile_matches():
+    from medimg.assess import profile_matches
+    assert profile_matches(None, "mflux") is False
+    assert profile_matches(None, "fake") is False
+    assert profile_matches({"backend": {"name": "sdcpp"}}, "fake") is True
+    assert profile_matches({"backend": {"name": None}}, "mflux") is True
+    assert profile_matches({"backend": {}}, "mflux") is True
+    assert profile_matches({}, "mflux") is True
+    assert profile_matches({"backend": {"name": "mflux"}}, "mflux") is True
+    assert profile_matches({"backend": {"name": "sdcpp"}}, "mflux") is False
+
+
+def test_build_profile_has_reason_code():
+    p = build_profile(MACHINE, DECISION, None)
+    assert "reason_code" in p["backend"]
+    assert p["backend"]["reason_code"] == getattr(DECISION, "reason_code", None)
+
+
+def test_render_report_sdcpp_uses_sdcpp_presets():
+    d = Decision("sdcpp", True, "r", "", None, False, "m", 5.0, 10.0, "cpu", "mid")
+    p = build_profile(MACHINE, d, BENCH, device="cpu",
+                      sdcpp={"release": "r", "build": "b", "tier": "mid", "vulkan_tried": False,
+                             "vulkan_error": None, "device_proven": True, "failed_devices": []})
+    text = render_report(p)
+    assert "512x512 draft" in text and "at 8 steps" in text

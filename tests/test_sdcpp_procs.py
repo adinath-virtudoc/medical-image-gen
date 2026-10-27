@@ -72,3 +72,79 @@ def test_worker_stop_aborts_engine():
     w = GenerationWorker(E(), None, "x", unload_after_job=False, sheet_lock=__import__("threading").Lock())
     w.stop()
     assert calls == [1] and w._cancel.is_set()
+
+
+def test_popen_group_never_uses_preexec_fn(monkeypatch):
+    from pathlib import Path
+
+    from medimg.sdcpp import procs
+
+    seen = {}
+
+    class Rec:
+        pid = 424242
+
+        def __init__(self, argv, **kwargs):
+            seen["kwargs"] = kwargs
+
+        def poll(self):
+            return None
+
+    monkeypatch.setattr(procs, "_WIN", False)
+    monkeypatch.setattr(procs.sys, "platform", "linux")
+    monkeypatch.setattr(procs.subprocess, "Popen", Rec)
+    rec = procs.popen_group(["x"], Path("."))
+    try:
+        assert "preexec_fn" not in seen["kwargs"]
+        assert seen["kwargs"]["start_new_session"] is True
+        assert not hasattr(procs, "_pdeathsig")
+    finally:
+        with procs._LIVE_LOCK:
+            procs._LIVE.discard(rec)
+
+
+import pytest
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX parent-death semantics")
+def test_child_dies_when_parent_killed(tmp_path):
+    import os
+    import signal
+
+    child_code = "import time\nwhile True:\n    print(1, flush=True)\n    time.sleep(0.2)\n"
+    parent_code = (
+        "import sys, time\n"
+        "from pathlib import Path\n"
+        "from medimg.sdcpp.procs import popen_group\n"
+        f"p = popen_group([sys.executable, '-c', {child_code!r}], Path({str(tmp_path)!r}))\n"
+        "print(p.pid, flush=True)\n"
+        "time.sleep(60)\n"
+    )
+    inter = subprocess.Popen([sys.executable, "-c", parent_code], stdout=subprocess.PIPE,
+                             cwd=os.getcwd())
+    gpid = None
+    try:
+        gpid = int(inter.stdout.readline().decode().strip())
+        inter.kill()
+        inter.wait(timeout=10)
+        deadline = time.time() + 10
+        gone = False
+        while time.time() < deadline:
+            try:
+                pr = psutil.Process(gpid)
+                if pr.status() == psutil.STATUS_ZOMBIE:
+                    gone = True
+                    break
+            except psutil.NoSuchProcess:
+                gone = True
+                break
+            time.sleep(0.2)
+        assert gone, "grandchild survived parent SIGKILL"
+    finally:
+        if inter.poll() is None:
+            inter.kill()
+        if gpid:
+            try:
+                psutil.Process(gpid).kill()
+            except Exception:
+                pass

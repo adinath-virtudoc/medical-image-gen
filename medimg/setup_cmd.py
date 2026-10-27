@@ -82,6 +82,8 @@ def _assess_done(backend: str | None, cpu: str, decision=None, settings=None) ->
         be = p.get("backend") or {}
         if be.get("device") is None:
             return False
+        if (be.get("sdcpp") or {}).get("device_proven") is False:
+            return False
         if decision is not None and (be.get("sdcpp") or {}).get("tier") != decision.tier:
             return False
         wanted = getattr(settings, "sdcpp_device", None)
@@ -114,13 +116,15 @@ def run(args) -> int:
         pending_engine = "sdcpp" if engine_arg == "sdcpp" else None
     engine = engine_arg if engine_arg is not None else settings.engine
     engine = None if engine in (None, "auto") else engine
+    tier_arg = getattr(args, "tier", None)
+    tier = None if tier_arg in (None, "auto") else tier_arg
     # an explicit "auto" must not fall back to the saved setting (it is only saved in the last step)
     child_engine = "auto" if engine_arg == "auto" else engine
 
     # 1. Machine, disk
     _step(1, "Checking this computer")
     machine = detect(disk_path=root)
-    decision = decide(machine, engine=engine)
+    decision = decide(machine, engine=engine, tier=tier)
     print(f"  {machine.os_name} {machine.os_version}, {machine.cpu}, "
           f"{machine.ram_total_gb:g} GB RAM, {machine.disk_free_gb:.1f} GB free disk, "
           f"Python {machine.python}")
@@ -210,7 +214,7 @@ def run(args) -> int:
     else:
         from medimg import smoke
         rc = smoke.run(Namespace(size="512x512", steps=4, fake_engine=False, output_root=str(root),
-                                engine=child_engine))
+                                engine=child_engine, tier=tier))
         if rc != 0:
             print("The test image failed. Run: python -m medimg smoke   to see the error.")
             return 1
@@ -224,15 +228,18 @@ def run(args) -> int:
     else:
         from medimg import assess
         rc = assess.run(Namespace(no_benchmark=False, json=False, output_root=str(root),
-                                   engine=child_engine))
+                                   engine=child_engine, tier=tier, retry_gpu=False))
         if rc != 0:
             print("The assessment failed. Run: python -m medimg assess   to see the error.")
             return 1
 
     # 6. Next
     _step(6, "Done")
-    if engine_arg is not None:
-        settings.engine = pending_engine
+    if engine_arg is not None or tier_arg is not None:
+        if engine_arg is not None:
+            settings.engine = pending_engine
+        if tier_arg is not None:
+            settings.sdcpp_tier = tier
         config.save_settings(settings)
     print(f"  Setup finished. Start the app with:\n\n      {_next_command()}\n")
     return 0

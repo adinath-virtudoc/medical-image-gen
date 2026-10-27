@@ -103,3 +103,12 @@ def test_estimates_table_rows():
     r = rows[1]
     assert r["for_10"] == pytest.approx(r["seconds"] * 10) and r["for_50"] == pytest.approx(r["seconds"] * 50)
     assert set(r) >= {"label", "width", "height", "seconds", "for_10", "for_25", "for_50"}
+
+
+def test_estimates_table_presets():
+    from medimg import config
+    prof = m2_profile()
+    rows = estimates_table(prof, config.SDCPP_DEFAULT_STEPS, presets=config.SDCPP_SIZE_PRESETS)
+    assert len(rows) == 7 and rows[0]["label"] == "512x512 draft"
+    assert len(estimates_table(prof)) == 6
+    assert estimates_table({"benchmark": None, "actuals": []}, presets=config.SDCPP_SIZE_PRESETS) == []

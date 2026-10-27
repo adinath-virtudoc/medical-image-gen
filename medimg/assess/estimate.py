@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from statistics import mean
 
 from medimg.config import DEFAULT_STEPS, SIZE_PRESETS
@@ -78,12 +79,13 @@ def estimate_seconds(profile: dict, width: int, height: int, steps: int) -> floa
     return float(_curve_seconds(curve, width, height, steps))
 
 
-def estimates_table(profile: dict, steps: int = DEFAULT_STEPS) -> list[dict]:
+def estimates_table(profile: dict, steps: int = DEFAULT_STEPS,
+                    presets: Sequence[tuple[str, int, int]] = SIZE_PRESETS) -> list[dict]:
     """One row per size preset; empty when the profile has nothing to estimate from."""
     if not has_basis(profile):
         return []
     rows = []
-    for label, w, h in SIZE_PRESETS:
+    for label, w, h in presets:
         s = estimate_seconds(profile, w, h, steps)
         rows.append({"label": label, "width": w, "height": h, "seconds": s,
                      "for_10": s * 10, "for_25": s * 25, "for_50": s * 50})

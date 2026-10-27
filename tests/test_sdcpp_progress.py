@@ -58,12 +58,24 @@ def test_missing_model():
         "Run setup again; it re-downloads only what is missing.")
 
 
-@pytest.mark.parametrize("rc", [-9, 0xC0000017, 0xC00000FD, -1073741801])
+@pytest.mark.parametrize("rc", [-9, 0xC0000017, -1073741801, 0xC000012D])
 def test_crash_is_ram_oom(rc):
     cls, cause, fix = classify_failure(rc, ProgressParser().state)
     assert cls == "ram_oom"
     assert cause == "The computer ran out of memory while making the image."
     assert "512x512" in fix
+
+
+@pytest.mark.parametrize("rc", [0xC00000FD, -1073741571])
+def test_stack_overflow_is_crash_not_oom(rc):
+    cls, cause, fix = classify_failure(rc, ProgressParser().state)
+    assert cls == "unknown"
+    assert "0xC00000FD" in cause and "stack overflow" in cause
+
+
+def test_known_crash_names():
+    cause = classify_failure(0xC0000005, ProgressParser().state)[1]
+    assert "access violation" in cause
 
 
 @pytest.mark.parametrize("rc", [0xC0000005, -1073741819, 0xC0000135, 0xC000001D])

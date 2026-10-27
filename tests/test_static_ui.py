@@ -133,3 +133,12 @@ def test_no_urls_anywhere_in_static():
         if f.is_file():
             t = f.read_text(encoding="utf-8")
             assert "http://" not in t and "https://" not in t, f.name
+
+
+def test_selftest_hint_present():
+    assert "d-selftest" in header_ids()
+    html = read("index.html")
+    m = re.search(r"""<p id="d-selftest"[^>]*>(.*?)</p>""", html, re.S)
+    assert m
+    assert "selftest.command" in m.group(1) and "selftest.bat" in m.group(1)
+    assert "http" not in m.group(1)
