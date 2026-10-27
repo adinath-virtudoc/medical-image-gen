@@ -136,7 +136,14 @@ class GenerationWorker:
         self._thread.start()
 
     def stop(self, timeout: float = 5.0) -> None:
+        self._cancel.set()
         self._queue.put(None)
+        abort = getattr(self.engine, "abort", None)
+        if callable(abort):
+            try:
+                abort()
+            except Exception:
+                pass
         if self._thread is not None:
             self._thread.join(timeout)
 

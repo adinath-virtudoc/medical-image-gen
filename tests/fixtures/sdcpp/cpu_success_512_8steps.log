@@ -1,0 +1,80 @@
+[V] z_image: num_layers = 30, num_refiner_layers = 2, hidden_size = 3840, num_heads = 30, num_kv_heads = 30, in_channels = 16, out_channels = 16 --- z_image.hpp:125
+[I] using VAE for encoding / decoding --- model_builders.cpp:210
+[I] vae decoder: ch = 128 --- auto_encoder_kl.hpp:529
+[I] flash attention auto: CPU -> on (CPU) --- flash_attn.cpp:66
+[I] conv2d direct auto: CPU -> off (no implicit GEMM path) --- conv_direct.cpp:90
+[I] conv3d direct auto: CPU -> off (no implicit GEMM path) --- conv_direct.cpp:90
+[V] validating model metadata --- diffusion_engine.cpp:1307
+[V] model metadata validated; weights will be prepared lazily --- diffusion_engine.cpp:1377
+[I] total params memory size = 4606.10MB (VRAM 0.00MB, RAM 4606.10MB): text_encoders 1973.78MB(RAM), diffusion_model 2472.32MB(RAM), vae 160.00MB(RAM), controlnet 0.00MB(N/A), extensions 0.00MB(N/A) --- diffusion_engine.cpp:1438
+[I] running in FLOW mode --- diffusion_engine.cpp:1478
+[I] generate_image 512x512 --- image.cpp:869
+[V] using 4 threads for model loading --- model_loader.cpp:190
+[I] get_sigmas with discrete scheduler --- denoiser.hpp:1129
+[I] sampling using Euler method --- request.cpp:477
+[V] parse '<|im_start|>user\nclinical photograph of an adult man's hand on a white background<|im_end|>\n<|im_start|>assistant\n' to [['<|im_start|>user\n', 1], ['clinical photograph of an adult man's hand on a white background', 1], ['<|im_end|>\n<|im_start|>assistant\n', 1], ] --- conditioner.hpp:2181
+[V] split prompt "<|im_start|>user\n" to 3 tokens ["<|im_start|>", "user", "ŽS", ] --- bpe_tokenizer.cpp:245
+[V] split prompt "clinical photograph of an adult man's hand on a white background" to 12 tokens ["clinical", "Žÿphotograph", "Žÿof", "Žÿan", "Žÿadult", "Žÿman", "'s", "Žÿhand", "Žÿon", "Žÿa", "Žÿwhite", "Žÿbackground", ] --- bpe_tokenizer.cpp:245
+[V] split prompt "<|im_end|>\n<|im_start|>assistant\n" to 5 tokens ["<|im_end|>", "ŽS", "<|im_start|>", "assistant", "ŽS", ] --- bpe_tokenizer.cpp:245
+[I] qwen3 build cached graph cut plan done (taking 2 ms) --- ggml_graph_cut.cpp:1034
+[V] memory-mapping tensors... --- model_loader.cpp:934
+[I] memory-mapped 386 tensors in 1 files (1927.58 MB), taking 0.00s --- model_loader.cpp:1049
+[V] loading 386/398 tensors from qwen3-Q3_K_M.gguf --- model_loader.cpp:1133
+
+  |################################                  | 241/386 -   0.00MB/s[K
+  |##################################################| 386/386 -   0.00MB/s[K
+[I] loading tensors completed, taking 0.22s (read: 0.00s, memcpy: 0.00s, convert: 0.00s, copy_to_backend: 0.00s) --- model_loader.cpp:1405
+[V] qwen3 compute buffer size: 1.88 MB(RAM) on CPU (peak across 1 segment) --- ggml_runner.cpp:1022
+[V] computing condition graph completed, taking 3240 ms --- conditioner.hpp:3287
+[I] get_learned_condition completed, taking 3.24s --- image.cpp:580
+[I] generating image: 1/1 - seed 42 --- image.cpp:920
+[I] z_image build cached graph cut plan done (taking 3 ms) --- ggml_graph_cut.cpp:1034
+[V] memory-mapping tensors... --- model_loader.cpp:934
+[I] memory-mapped 452 tensors in 1 files (2472.30 MB), taking 0.00s --- model_loader.cpp:1049
+[V] loading 452/453 tensors from z_image_turbo-Q2_K.gguf --- model_loader.cpp:1133
+
+  |##################################################| 452/452 -   0.00MB/s[K
+[I] loading tensors completed, taking 0.21s (read: 0.00s, memcpy: 0.00s, convert: 0.00s, copy_to_backend: 0.00s) --- model_loader.cpp:1405
+[V] z_image compute buffer size: 171.63 MB(RAM) on CPU (peak across 1 segment) --- ggml_runner.cpp:1022
+
+  |======>                                           | 1/8 -  34.12s/it - ETA 03:58[K
+  |============>                                     | 2/8 -  34.08s/it - ETA 03:24[K
+  |==================>                               | 3/8 -  33.71s/it - ETA 02:49[K
+  |=========================>                        | 4/8 -  32.29s/it - ETA 02:14[K
+  |===============================>                  | 5/8 -  33.65s/it - ETA 01:40[K
+  |=====================================>            | 6/8 -  33.50s/it - ETA 01:07[K
+  |===========================================>      | 7/8 -  34.49s/it - ETA 00:33[K
+  |==================================================| 8/8 -  33.87s/it[K
+[I] sampling completed, taking 269.75s --- image.cpp:953
+[I] generating 1 latent images completed, taking 269.75s --- image.cpp:967
+[I] decoding 1 latents --- image.cpp:605
+[V] VAE decode tile size: 256x256 pixels (32x32 latent) --- vae.hpp:348
+[V] num tiles : 3, 3  --- tiling.cpp:178
+[V] processing 9 tiles --- tiling.cpp:179
+[I] vae build cached graph cut plan done (taking 1 ms) --- ggml_graph_cut.cpp:1034
+[V] memory-mapping tensors... --- model_loader.cpp:934
+[I] memory-mapped 99 tensors in 1 files (0.14 MB), taking 0.00s --- model_loader.cpp:1049
+[V] loading 138/244 tensors from ae.safetensors --- model_loader.cpp:1133
+
+  |##########################################        | 114/138 - 457.67MB/s[K
+  |##################################################| 138/138 - 447.53MB/s[K
+[I] loading tensors completed, taking 0.42s (read: 0.24s, memcpy: 0.00s, convert: 0.06s, copy_to_backend: 0.00s) --- model_loader.cpp:1405
+[V] model manager prepared params backend buffers ( 94.43 MB, 39 tensors, 1 blocks, RAM) on CPU --- model_manager.cpp:494
+[V] vae compute buffer size: 416.06 MB(RAM) on CPU (peak across 1 segment) --- ggml_runner.cpp:1022
+
+  |=====>                                            | 1/9 -   8.52s/it - ETA 01:08[K
+  |===========>                                      | 2/9 -   7.64s/it - ETA 00:56[K
+  |================>                                 | 3/9 -   7.56s/it - ETA 00:47[K
+  |======================>                           | 4/9 -   7.54s/it - ETA 00:39[K
+  |===========================>                      | 5/9 -   7.62s/it - ETA 00:31[K
+  |=================================>                | 6/9 -   7.55s/it - ETA 00:23[K
+  |======================================>           | 7/9 -   7.59s/it - ETA 00:15[K
+  |============================================>     | 8/9 -   7.61s/it - ETA 00:07[K
+  |==================================================| 9/9 -   7.59s/it[K
+[V] computing vae decode graph completed, taking 69.28s --- vae.hpp:384
+[I] latent 1 decoded, taking 69.28s --- image.cpp:671
+[I] decode_first_stage completed, taking 69.28s --- image.cpp:675
+[I] generate_image completed in 342.29s --- image.cpp:1140
+[V] model manager released params backend buffers ( 94.43 MB, 39 tensors, 1 blocks, RAM) from CPU --- model_manager.cpp:1299
+[I] save result image 0 to 'test_cpu.png' (success) --- main.cpp:495
+[I] 1/1 images saved --- main.cpp:571

@@ -18,6 +18,8 @@ outputs/
 .pytest_cache/
 .DS_Store
 *.log
+# keep sd-cli field-evidence log fixtures (used by tests/test_sdcpp_progress.py)
+!tests/fixtures/sdcpp/*.log
 *.egg-info/
 build/
 dist/
@@ -42,3 +44,13 @@ dist/
 
 # local-only agent transcripts (never commit)
 /agent workflows/
+# sd.cpp binaries live in ~/.medical-image-gen/tools; guard against stray copies in the repo
+sd-cli
+sd-cli.exe
+sd-server
+sd-server.exe
+*.dll
+*.dylib
+*.so
+*.metallib
+*.zip

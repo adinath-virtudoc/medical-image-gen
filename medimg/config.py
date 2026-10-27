@@ -34,6 +34,18 @@ REPO_ROOT: Path = Path(__file__).resolve().parent.parent
 PROFILE_PATH = REPO_ROOT / "device_profile.json"
 SETTINGS_PATH = Path.home() / ".medical-image-gen" / "config.json"
 DEFAULT_OUTPUT_ROOT = Path.home() / "medical-image-gen-output"
+SDCPP_RELEASE_TAG = "master-1015-e41fbcf"
+SDCPP_MODEL_ID = "leejet/Z-Image-Turbo-GGUF"
+SDCPP_DEFAULT_STEPS = 8
+SDCPP_SIZE_PRESETS = [("512x512 draft", 512, 512), ("768x768", 768, 768), ("1024x1024", 1024, 1024),
+                      ("768x1344 portrait", 768, 1344), ("1344x768 landscape", 1344, 768),
+                      ("832x1216", 832, 1216), ("1216x832", 1216, 832)]
+SDCPP_WARN_OVER_S = 900
+SDCPP_MIN_RAM_GB = 7.0
+TOOLS_DIR = Path.home() / ".medical-image-gen" / "tools"  # binaries; never in the repo
+ENGINE_CHOICES = ("auto", "sdcpp")  # --engine values
+SDCPP_DEVICES = ("cpu", "vulkan0", "metal")
+SDCPP_TIERS = ("low", "mid", "high")
 
 
 @dataclass
@@ -42,6 +54,15 @@ class Settings:
     port: int = DEFAULT_PORT
     steps: int = DEFAULT_STEPS
     unload_after_job: bool | None = None  # None = decide from RAM (D17)
+    engine: str | None = None  # "sdcpp" or None (= auto)
+    sdcpp_device: str | None = None  # "cpu" | "vulkan0" | "metal"; None = from the profile
+    sdcpp_tier: str | None = None  # "low" | "mid" | "high"; None = from RAM
+    sdcpp_threads: int | None = None  # None = sd-cli default
+
+
+# Plain class attribute (not a dataclass field, so never saved): True only when the
+# settings file held a valid `steps` key. load_settings sets it on the instance.
+Settings.steps_explicit = False
 
 
 def load_settings(path: Path = SETTINGS_PATH) -> Settings:
@@ -60,9 +81,19 @@ def load_settings(path: Path = SETTINGS_PATH) -> Settings:
         steps = data.get("steps")
         if isinstance(steps, int) and not isinstance(steps, bool) and STEPS_MIN <= steps <= STEPS_MAX:
             out.steps = steps
+            out.steps_explicit = True
         unload = data.get("unload_after_job")
         if unload is None or isinstance(unload, bool):
             out.unload_after_job = unload
+        if data.get("engine") == "sdcpp":
+            out.engine = "sdcpp"
+        if data.get("sdcpp_device") in SDCPP_DEVICES:
+            out.sdcpp_device = data["sdcpp_device"]
+        if data.get("sdcpp_tier") in SDCPP_TIERS:
+            out.sdcpp_tier = data["sdcpp_tier"]
+        th = data.get("sdcpp_threads")
+        if isinstance(th, int) and not isinstance(th, bool) and th > 0:
+            out.sdcpp_threads = th
         return out
     except (OSError, ValueError):
         return defaults
@@ -74,6 +105,8 @@ def save_settings(s: Settings, path: Path = SETTINGS_PATH) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     data = asdict(s)
     data["output_root"] = str(s.output_root)
+    if s.steps == DEFAULT_STEPS and not getattr(s, "steps_explicit", False):
+        data.pop("steps", None)  # never turn an untouched default into an explicit choice
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=path.name + ".", suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
