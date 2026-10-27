@@ -27,3 +27,21 @@ the assessment and the catalogue. Today each platform has exactly one model.
   [SAFETY_AND_LICENCES.md](SAFETY_AND_LICENCES.md)), so they are left out of version 1.
 - **Zip export** would bundle the output folder and the sheet for handoff. Today images move by hand
   through Google Drive (see [HANDOFF.md](HANDOFF.md)).
+
+## 5. Ideas for the stable-diffusion.cpp engine
+
+The `sdcpp` engine is built (see [ARCHITECTURE.md](ARCHITECTURE.md)). These parts are not.
+
+- **sd-server instead of one process per image.** `sd-cli` has a sibling program, `sd-server`, that
+  keeps the model loaded and takes jobs over a local web address. It would save a few seconds per image
+  on fast graphics cards. Today it adds a second long-running program and a port, and it holds about
+  5 GB of memory between images, so one process per image is used.
+- **Better time estimates at large sizes.** Estimates for 1024x1024 on a processor are rough, because
+  decoding time grows with the picture size. The app corrects them after the first real image and
+  warns above 15 minutes. A better curve would use the measured decode time at each benchmark size.
+- **More model tiers.** Q4_0, Q5_0, Q6_K and Q8_0 of the image model could become extra tiers for
+  computers with more memory (sizes in [HARDWARE_ALTERNATIVES.md](HARDWARE_ALTERNATIVES.md)), if the
+  Q2_K and Q3_K anatomy is not good enough.
+- **Re-pinning the release.** Releases of stable-diffusion.cpp appear for every code change, and old
+  ones can be removed. If the pinned download disappears, change the release tag and checksums in
+  `medimg/sdcpp/pins.py`, then re-run a real image and update the saved test logs.

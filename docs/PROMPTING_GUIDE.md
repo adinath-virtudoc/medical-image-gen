@@ -36,7 +36,7 @@ Change one thing at a time and keep the rest of the prompt the same.
 
 ## Settings
 
-- Steps: 9 is the default. Use 8-9 for Z-Image Turbo; more steps do not help much.
+- Steps: 9 is the default. Use 8-9 for Z-Image Turbo; more steps do not help much. The stable-diffusion.cpp engine (PCs without NVIDIA) uses the same prompts and 8 steps by default.
 - There is no negative prompt and no guidance setting. Say what you want, not what you do not want.
 - If you run out of memory, use `768x768` and keep the prompt the same.
 

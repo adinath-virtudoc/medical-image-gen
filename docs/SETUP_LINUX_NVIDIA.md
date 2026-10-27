@@ -1,11 +1,13 @@
 # Setup on Linux with an NVIDIA card
 
+> No NVIDIA card (or an old or small one)? Setup now picks the sd.cpp engine automatically; see [SETUP_WINDOWS_SDCPP.md](SETUP_WINDOWS_SDCPP.md).
+
 > **Unverified on real hardware.** This path was built and tested with mock libraries only. Nobody
 > has yet run a real image on Linux with it. Expect to report problems. Times below are estimates.
 
 Needs an NVIDIA card with 8 GB VRAM or more (16 GB or more recommended), 32 GB RAM recommended, and
 38 GB free disk (about 18 GB for the small-GPU modes). AMD GPUs are not supported. Written for
-Ubuntu 22.04 or newer; other distributions work if `curl` and `git` are installed.
+Ubuntu 22.04 or newer (the no-NVIDIA sd.cpp path needs Ubuntu 24.04 or newer); other distributions work if `curl` and `git` are installed.
 
 ## Steps
 

@@ -33,3 +33,9 @@ sheet, they will make the same images twice and the sheets will not merge. Wait 
 - Download the sheet again at the end of every session, even if you do not hand off.
 - Do not edit the sheet in Excel while a batch is running; edit the downloaded copy afterwards.
 - Images go back to the project owner by hand through Drive. There is no zip or export feature.
+
+## Which engine made the images
+
+Each image's sidecar `.json` file (saved next to the image) has an `engine` field that names the engine that made it. The sheet's Machine column shows the computer's name and its chip, which also tells you which computer made the image. A computer without an
+NVIDIA card uses the stable-diffusion.cpp engine (`sdcpp`); it is slower, and the same prompts and
+8 steps by default apply. Technical background: `PLAN_SDCPP.md` in the repo root.

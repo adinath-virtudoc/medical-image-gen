@@ -6,15 +6,15 @@ network once it is set up.
 
 ## Requirements
 
-| | Mac (Apple Silicon) | Windows 10/11 or Linux with NVIDIA |
-|---|---|---|
-| Chip / GPU | M1 or newer (Intel Macs are not supported) | NVIDIA card with 8 GB VRAM or more (16 GB or more recommended); AMD is not supported |
-| Memory | 16 GB RAM or more | 32 GB RAM recommended for 8-16 GB cards |
-| Free disk | 11 GB (5.9 GB model + 5 GB margin) | 38 GB (32.9 GB model + 5 GB margin); about 18 GB in the small-GPU modes |
-| Driver | none | NVIDIA driver 570 or newer (check with `nvidia-smi`) |
-| Status | Tested | **Unverified on real hardware** (built and tested with mocks only) |
-| Speed (9 steps) | about 1-4 min per image at 1024x1024 or 768x1344 on an M2 Pro | not measured yet; run `assess` to get an estimate |
-| Internet | only during setup | only during setup |
+| | Mac (Apple Silicon) | Windows 10/11 or Linux with NVIDIA | Windows/Linux without NVIDIA |
+|---|---|---|---|
+| Chip / GPU | M1 or newer (Intel Macs are not supported) | NVIDIA card with 8 GB VRAM or more (16 GB or more recommended) | Intel/AMD graphics or none |
+| Memory | 16 GB RAM or more | 32 GB RAM recommended for 8-16 GB cards | 8 GB RAM minimum |
+| Free disk | 11 GB (5.9 GB model + 5 GB margin) | 38 GB (32.9 GB model + 5 GB margin); about 18 GB in the small-GPU modes | 10-12 GB (up to 11.7 GB for computers with 24 GB RAM or more) |
+| Driver | none | NVIDIA driver 570 or newer (check with `nvidia-smi`) | no driver needed for the processor path |
+| Status | Tested | **Unverified on real hardware** (built and tested with mocks only) | **App path not yet verified on real hardware.** The `sd-cli` program alone was tested by hand on one 2021 Intel laptop (processor only) |
+| Speed | about 1-4 min per image at 1024x1024 or 768x1344 on an M2 Pro (9 steps) | not measured yet; run `assess` to get an estimate | slow: 5-6 min per 512x512 draft on a 2021 laptop CPU |
+| Internet | only during setup | only during setup | only during setup |
 
 You do not need to install Python yourself; setup installs everything it needs.
 
@@ -34,8 +34,10 @@ You do not need to install Python yourself; setup installs everything it needs.
    ./setup.command
    ```
 
-   Linux: `./setup.sh`. Windows: double-click `setup.bat`. Success looks like a final message that
-   prints the exact command to start the app. See your system guide for details.
+   Linux: `./setup.sh`. Windows: double-click `setup.bat`. A PC without an NVIDIA card is detected
+   automatically: the same setup file (double-click `setup.bat`, or run `./setup.sh`) picks the slower processor engine (allow 20-60
+   min for the download). Success looks like a final message that prints the exact command to start
+   the app. See your system guide for details.
 
 3. **Start** the app (about 10 seconds). Mac: double-click `start.command`, or paste:
 
@@ -55,21 +57,12 @@ You do not need to install Python yourself; setup installs everything it needs.
 
 Stop the app with Ctrl+C in its terminal window, or by closing that window.
 
-## Other Windows hardware (researched, not built yet)
+## Windows/Linux without NVIDIA
 
-Today Windows needs an NVIDIA card and a 32.9 GB model download. Research on 2026-10-26 found
-smaller options, similar to the 5.9 GB 4-bit model the Mac uses. **None of these is built into
-this tool yet, and none has been tested on real hardware.**
-
-| Windows machine | Best option found | Download | Status |
-|---|---|---|---|
-| NVIDIA 8-12 GB | Z-Image Turbo GGUF Q4_K_M (12 GB: Q6_K) from `unsloth/Z-Image-Turbo-GGUF`, with CPU offload | 5.0 / 5.9 GB model file | Planned for v1.1. Works with the current diffusers engine |
-| NVIDIA 16 GB | Z-Image Turbo GGUF Q8_0 (close to full quality) | 7.2 GB instead of 32.9 GB | Planned for v1.1 |
-| NVIDIA, fastest | Nunchaku int4 (`nunchaku-ai/nunchaku-z-image-turbo`) | about 3-4 GB (estimate) | On hold until Windows install support is confirmed |
-| AMD or Intel GPU, laptop graphics | stable-diffusion.cpp (Vulkan build) with `leejet/Z-Image-Turbo-GGUF` | about 6-9 GB in total | Candidate for v2. Needs a new engine |
-| No GPU (CPU only) | stable-diffusion.cpp (CPU build) | about 6-9 GB in total | Candidate for v2. Expect several minutes per image |
-
-Full findings, the other models compared, and sources:
+A PC with Intel or AMD graphics, or no graphics card, uses the stable-diffusion.cpp engine. Setup
+picks it automatically. It runs on the processor, so it is slow (5-6 minutes for a 512x512 draft on a
+2021 laptop), but it needs only 8 GB of RAM and 10-12 GB of disk. Leave batches running overnight.
+Step by step: [docs/SETUP_WINDOWS_SDCPP.md](docs/SETUP_WINDOWS_SDCPP.md). Research on other options:
 [docs/HARDWARE_ALTERNATIVES.md](docs/HARDWARE_ALTERNATIVES.md).
 
 ## Guides
@@ -79,6 +72,7 @@ Full findings, the other models compared, and sources:
 | [docs/SETUP_MAC.md](docs/SETUP_MAC.md) | Setting up an Apple Silicon Mac |
 | [docs/SETUP_WINDOWS_NVIDIA.md](docs/SETUP_WINDOWS_NVIDIA.md) | Setting up Windows with an NVIDIA card (unverified) |
 | [docs/SETUP_LINUX_NVIDIA.md](docs/SETUP_LINUX_NVIDIA.md) | Setting up Linux with an NVIDIA card (unverified) |
+| [docs/SETUP_WINDOWS_SDCPP.md](docs/SETUP_WINDOWS_SDCPP.md) | Setting up Windows or Linux without an NVIDIA card (slow, needs only 8 GB RAM) |
 | [docs/USING_THE_SHEET.md](docs/USING_THE_SHEET.md) | Filling in the Excel sheet |
 | [docs/HANDOFF.md](docs/HANDOFF.md) | Passing a half-finished sheet to the next person |
 | [docs/PROMPTING_GUIDE.md](docs/PROMPTING_GUIDE.md) | Writing prompts that work |

@@ -62,6 +62,21 @@ On a 16 GB Mac the app unloads the model after each image to stay safe (adds abo
 Close other large apps while generating. If you get an out-of-memory error, use the
 `768x768 low-memory` size. See [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
+## Comparing with the sd.cpp engine (optional)
+
+You can also run the Mac with the stable-diffusion.cpp engine, the one used by PCs without NVIDIA, to
+compare speed and pictures. This needs **macOS 26 or newer**; on an older macOS, setup stops with a
+message and nothing is downloaded. Paste:
+
+```sh
+./setup.command --engine sdcpp
+```
+
+This downloads another set of model files (about 5.6 GB). To return to the normal Mac engine, paste
+`./setup.command --engine auto`. See [SETUP_WINDOWS_SDCPP.md](SETUP_WINDOWS_SDCPP.md). Your choice is
+saved only after setup finishes successfully. If macOS blocks the downloaded program, run
+`xattr -d com.apple.quarantine` on it as described there (the path is in that guide).
+
 ## Check the machine again
 
 ```sh

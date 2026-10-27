@@ -1,5 +1,7 @@
 # Setup on Windows 10/11 with an NVIDIA card
 
+> No NVIDIA card (or an old or small one)? Setup now picks the sd.cpp engine automatically; see [SETUP_WINDOWS_SDCPP.md](SETUP_WINDOWS_SDCPP.md).
+
 > **Unverified on real hardware.** This path was built and tested with mock libraries only. Nobody
 > has yet run a real image on Windows with it. Expect to report problems. Times below are estimates.
 

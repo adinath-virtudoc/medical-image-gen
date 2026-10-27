@@ -15,6 +15,13 @@ Find the symptom, check the cause, apply the fix. The app's own error messages a
 | A row is invalid: status `invalid` | Missing cell, bad Size, or two rows with the same output path | Read the Error cell, fix it, upload again |
 | macOS says `setup.command` cannot be opened | The file came from a download and is not yet approved | Right-click the file, choose Open, then Open again; or run `./setup.command` in a terminal |
 | A done image is missing from the Gallery | The sheet says done but this computer never made the image (it came from a previous person) | Nothing is wrong; the image is in the shared Drive folder |
+| The graphics chip ran out of memory (stable-diffusion.cpp engine) | The graphics chip shares memory with the computer, or has too little of its own | Nothing to do: the app switches to the processor by itself and finishes the image, slower. To skip the failed try next time, open `~/.medical-image-gen/config.json` (Windows: `C:\Users\<you>\.medical-image-gen\config.json`) and set `"sdcpp_device": "cpu"` |
+| The image program (sd-cli) is not installed | Setup never finished, the `tools` folder under `.medical-image-gen` was deleted, or antivirus removed the file | Run setup again; it downloads only what is missing |
+| A model file is missing or damaged | A download stopped halfway, or a file in the Hugging Face cache was moved or changed | Run setup again; it re-downloads only what is missing and checks every file |
+| The computer ran out of memory while making the image | Another program (browser, Teams) holds the memory, or the picture is larger than 512x512 | Close other programs, pick the `512x512 draft` size, then try again |
+| Very slow (processor-only) | On a computer without a usable graphics chip, `sd-cli` runs on the processor | Expected: about 5 to 6 minutes per 512x512 draft on a 2021 laptop. Make drafts, avoid 1024x1024 (20 minutes or more), and run big batches overnight with the power plugged in |
+| Windows SmartScreen, antivirus or macOS Gatekeeper blocks sd-cli | The program is new and unsigned | Windows: click More info, then Run anyway, or allow the file in your antivirus. Mac: run `xattr -d com.apple.quarantine <path to sd-cli>` in Terminal, using the path under `~/.medical-image-gen/tools/sdcpp/` |
+| sd-cli crashes at start on Windows or Linux (graphics driver or remote desktop) | The Vulkan graphics driver is old or missing, or you are in a remote desktop session | Run setup again: it detects the crash and switches to the processor-only build. Update the graphics driver, and work on the computer itself instead of remote desktop |
 
 ## Still stuck
 
