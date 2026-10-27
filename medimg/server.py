@@ -708,9 +708,12 @@ def main(args) -> int:
         want = getattr(args, "engine", None) or settings.engine
         want = want if want in config.ENGINE_CHOICES and want != "auto" else None
         backend = ((profile or {}).get("backend") or {}).get("name")
-        if not backend or (want and want != backend):
+        # a profile with no machine section (e.g. one saved by an early benchmark) is rebuilt too
+        if not backend or (want and want != backend) or not (profile or {}).get("machine"):
             from medimg.assess import decide, detect
-            decision = decide(detect(disk_path=settings.output_root), engine=want)
+            from medimg.assess.profile import build_profile
+            machine = detect(disk_path=settings.output_root)
+            decision = decide(machine, engine=want)
             if not decision.supported or not decision.backend:
                 print(f"Problem: {decision.reason}", file=sys.stderr)
                 if decision.fix:
@@ -733,8 +736,13 @@ def main(args) -> int:
                     pass
                 if not be["sdcpp"]["build"]:
                     be.pop("sdcpp")
-            # keep machine/benchmark/actuals of an existing profile; never write it back
-            profile = _profile_for_engine(profile, be)
+            # the fresh decision supplies machine + supported/reason for the Device report;
+            # keep benchmark/actuals of an existing same-engine profile; never write it back
+            fresh = build_profile(machine, decision, device=be.get("device"), sdcpp=be.get("sdcpp"))
+            be = {**fresh["backend"], **be}
+            profile = _profile_for_engine(profile or fresh, be)
+            if not profile.get("machine"):
+                profile["machine"] = fresh["machine"]
         engine = make_engine(backend, profile)
 
     app = create_app(engine, settings, profile)

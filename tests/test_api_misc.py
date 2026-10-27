@@ -5,6 +5,8 @@ import socket
 import sys
 from types import SimpleNamespace
 
+import pytest
+
 from medimg import config, server
 from tests.test_api_flow import (OK_PROMPT, build_sheet, make_client, profile_dict, simple_rows, upload,
                                  wait_for, wait_job)
@@ -242,3 +244,45 @@ def test_open_folder_delegates_to_osutil(monkeypatch, tmp_path):
     monkeypatch.setattr(osutil, "open_folder", lambda f: got.append(f) or True)
     assert server._open_folder(tmp_path) is True
     assert got == [tmp_path]
+
+
+@pytest.mark.parametrize("versioned", [True, False])
+def test_main_rebuilds_profile_missing_machine_section(monkeypatch, tmp_path, versioned):
+    """A profile saved without a machine section (old benchmark path) must not reach the
+    Device report as 'Computer : ?' / 'Supported: NO'. A readable one keeps its benchmark;
+    the unversioned file the old path wrote is unreadable and is replaced."""
+    import json
+    import uvicorn
+    import medimg.assess as assess
+    import medimg.engines as engines
+    from medimg.engines.fake_engine import FakeEngine
+    pfile = tmp_path / "p.json"
+    bench = {"fit": {"ref_pixels": 262144, "ref_per_step_s": 4.0, "alpha": 1.0, "overhead_s": 5.0}}
+    skeleton = {"backend": {"name": "mflux", "offload_mode": None},
+                "benchmark": bench, "actuals": [], "notes": []}
+    if versioned:
+        skeleton["schema_version"] = 1
+    pfile.write_text(json.dumps(skeleton))
+    monkeypatch.setattr(config, "PROFILE_PATH", pfile)
+    monkeypatch.setattr(config, "SETTINGS_PATH", tmp_path / "cfg.json")
+    mac = assess.Machine(hostname="mac", os_name="Darwin", os_version="26", cpu="Apple M2 Pro",
+                         apple_chip="Apple M2 Pro", ram_total_gb=16.0, ram_free_gb=8.0, gpu=None,
+                         disk_free_gb=100.0, disk_path=str(tmp_path), python="3.12", uv="0.11",
+                         arch="arm64")
+    monkeypatch.setattr(assess, "detect", lambda disk_path=None: mac)
+    monkeypatch.setattr(assess, "decide", lambda m, engine=None: SimpleNamespace(
+        supported=True, backend="mflux", reason="Apple Silicon Mac", fix=None, model_id="m",
+        offload_mode=None, unload_after_job=True, device=None, tier=None, reason_code="ok"))
+    monkeypatch.setattr(engines, "make_engine", lambda *a, **k: FakeEngine())
+    seen = {}
+    monkeypatch.setattr(server, "create_app", lambda engine, settings, profile: seen.update(p=profile))
+    monkeypatch.setattr(uvicorn, "run", lambda app, **kw: None)
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    assert server.main(SimpleNamespace(port=port, fake_engine=False, no_browser=True,
+                                       output_root=str(tmp_path / "out"))) == 0
+    p = seen["p"]
+    assert p["machine"]["cpu"] == "Apple M2 Pro" and p["machine"]["ram_total_gb"] == 16.0
+    assert p["backend"]["name"] == "mflux" and p["backend"]["supported"] is True
+    assert p["benchmark"] == (bench if versioned else None)
