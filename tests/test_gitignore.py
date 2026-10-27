@@ -4,7 +4,8 @@ from pathlib import Path
 GI = Path(__file__).resolve().parent.parent / ".gitignore"
 REQUIRED = [".venv/", "venv/", "__pycache__/", "*.pyc", "device_profile.json", "*.png", "*.jpg", "*.jpeg",
             "*.webp", "*.xlsx", "!templates/image_prompts_template.xlsx", "!templates/image_prompts_sample.xlsx",
-            "*.safetensors", "*.gguf", "models/", "output/", "outputs/", ".pytest_cache/", ".DS_Store", "*.log"]
+            "*.safetensors", "*.gguf", "models/", "output/", "outputs/", ".pytest_cache/", ".DS_Store", "*.log",
+            "ci-output/", "ci-artifacts/", "e2e-artifacts/"]
 
 
 def lines():
@@ -42,4 +43,7 @@ def test_matching():
     assert not ignored("templates/image_prompts_sample.xlsx")
     assert not ignored("templates/image_prompts_template.xlsx")
     assert ignored("templates/other.xlsx")
+    assert ignored("ci-output/x.png")
+    assert ignored("ci-artifacts/e2e_result.json")
+    assert ignored("e2e-artifacts/server.log")
     assert not ignored("medimg/config.py")

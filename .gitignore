@@ -54,3 +54,8 @@ sd-server.exe
 *.so
 *.metallib
 *.zip
+
+# real-run / end-to-end check outputs (CI and local); regenerated every run
+ci-output/
+ci-artifacts/
+e2e-artifacts/
