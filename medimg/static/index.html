@@ -4,6 +4,7 @@
   Element ids (id: what it is):
   status-strip: status strip container
   st-model: model state text (not loaded, loading, ready, error)
+  st-device: device label after the model state (e.g. cpu)
   st-phase: current job phase text
   st-bar: step progress bar
   st-bar-fill: progress bar fill
@@ -50,6 +51,10 @@
   s-steps: steps slider
   s-steps-val: steps value text
   s-size: size preset select
+  s-steps-hint: steps hint text (from /api/config)
+  s-estimate: Single tab estimate under the size preset
+  s-warn: Single tab slow-image warning
+  b-warn: batch tab slow-image warning
   s-subject: optional Subject
   s-unit: optional Unit
   s-lecture: optional Lecture
@@ -76,6 +81,7 @@
   d-table-body: estimates table body
   d-bench: Re-run benchmark button
   d-err: device error text
+  d-selftest: how to run the self-test
   set-root: output folder text box
   set-unload: unload model after each job select
   set-save: save settings button
@@ -94,7 +100,7 @@
   <div class="st-row">
     <strong class="brand">medical-image-gen</strong>
     <span class="chip" id="st-local">local only</span>
-    <span>Model: <b id="st-model">not loaded</b></span>
+    <span>Model: <b id="st-model">not loaded</b><span id="st-device"></span></span>
     <span id="st-phase">Idle</span>
     <span id="st-image"></span>
     <span id="st-eta"></span>
@@ -163,6 +169,7 @@
     <label>Images to generate in this batch <input type="number" id="b-count" min="1" value="1"></label>
     <span id="b-estimate" class="muted"></span>
   </div>
+  <p class="warn small" id="b-warn" hidden></p>
   <div class="row">
     <button id="b-generate" class="primary">Generate</button>
     <button id="b-cancel">Cancel</button>
@@ -182,7 +189,7 @@
     <button id="s-random">Randomise</button>
     <label>Steps <input type="range" id="s-steps" min="4" max="15" value="9"> <b id="s-steps-val">9</b></label>
   </div>
-  <p class="muted small">Steps: 8 to 9 recommended for Z-Image Turbo. More steps is slower and rarely better.</p>
+  <p class="muted small" id="s-steps-hint">Steps: 8 to 9 recommended for Z-Image Turbo. More steps is slower and rarely better.</p>
   <label class="block">Size
     <select id="s-size">
       <option value="1024x1024">1024x1024</option>
@@ -193,6 +200,8 @@
       <option value="768x768">768x768 low-memory</option>
     </select>
   </label>
+  <p class="muted small" id="s-estimate"></p>
+  <p class="warn small" id="s-warn" hidden></p>
   <fieldset>
     <legend>Save into the gallery tree (optional). Leave empty to save under "_single".</legend>
     <div class="row">
@@ -231,6 +240,7 @@
   </table>
   <div class="row"><button id="d-bench">Re-run benchmark</button></div>
   <div class="err" id="d-err" hidden></div>
+  <p id="d-selftest" class="muted">To test this computer, close the app and double-click selftest.command (Mac) or selftest.bat (Windows), or run ./selftest.sh (Linux). A report is written to the _selftest folder inside your output folder.</p>
 
   <h3>Settings</h3>
   <div class="row">

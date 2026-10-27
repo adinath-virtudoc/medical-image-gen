@@ -25,7 +25,9 @@ def test_config(monkeypatch, tmp_path):
     with client:
         c = client.get("/api/config").json()
         assert set(c) == {"version", "backend", "model_id", "defaults", "limits", "size_presets",
-                          "local_only", "nvidia_unverified"}
+                          "local_only", "nvidia_unverified", "warn_over_s", "device",
+                          "steps_hint"}
+        assert c["warn_over_s"] is None and c["device"] is None and c["steps_hint"] is None
         assert c["version"] == config.VERSION and c["backend"] == "fake" and c["local_only"] is True
         assert c["nvidia_unverified"] is False
         assert set(c["defaults"]) == {"steps", "width", "height", "port", "output_root", "unload_after_job"}
@@ -60,7 +62,7 @@ def test_device_with_and_without_profile(monkeypatch, tmp_path):
     client, *_ = make_client(monkeypatch, tmp_path)
     with client:
         d = client.get("/api/device").json()
-        assert set(d) == {"profile", "report", "estimates", "unverified"}
+        assert set(d) == {"profile", "report", "estimates", "unverified", "unverified_text"}
         assert d["profile"] is None and d["estimates"] == [] and d["unverified"] is False
     client, *_ = make_client(monkeypatch, tmp_path, profile=profile_dict())
     with client:
@@ -232,3 +234,11 @@ def test_main_binds_loopback_via_uvicorn(monkeypatch, tmp_path):
     assert rc == 0
     assert seen == {"host": "127.0.0.1", "port": port, "workers": 1, "reload": False}
     assert (tmp_path / "out" / "_sheets").is_dir()
+
+
+def test_open_folder_delegates_to_osutil(monkeypatch, tmp_path):
+    from medimg import osutil
+    got = []
+    monkeypatch.setattr(osutil, "open_folder", lambda f: got.append(f) or True)
+    assert server._open_folder(tmp_path) is True
+    assert got == [tmp_path]

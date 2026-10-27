@@ -1,0 +1,2 @@
+[W] loading diffusion model from '/nonexistent.gguf' failed --- model_builders.cpp:412
+[I] new_sd_ctx_t failed --- main.cpp:743

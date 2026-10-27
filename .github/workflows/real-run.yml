@@ -1,0 +1,142 @@
+# Real-run workflow: runs the real image engine (not a fake one) end to end.
+#
+# Two jobs, both started by hand ("Run workflow" button in the Actions tab) or, for the first one,
+# automatically every Monday morning:
+#
+# 1. cpu-real-run  - runs on GitHub's own Windows and Linux machines. These have no graphics chip,
+#    so the smallest model ("low" tier) runs on the processor. Slow but free, and it proves that
+#    setup, the web page flow and a real picture all work from a clean install.
+# 2. self-hosted-real-run - runs on a lab machine we own (label "medimg-lab"), only when someone
+#    starts it by hand. It never runs for pull requests, so strangers cannot run code on that
+#    machine. It keeps the lab machine's own settings (it does not force an engine or tier in setup).
+#
+# How to register a lab machine and what each result means: docs/TEST_MACHINES.md
+name: real-run
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Where to run"
+        type: choice
+        options: [github-cpu, self-hosted, both]
+        default: github-cpu
+      selfhosted_tier:
+        description: "Model tier on the lab machine"
+        type: choice
+        options: [auto, low, mid, high]
+        default: auto
+  schedule:
+    - cron: "23 4 * * 1" # Mondays 04:23 UTC, github-cpu only
+
+permissions:
+  contents: read
+
+concurrency:
+  group: real-run
+  cancel-in-progress: false
+
+jobs:
+  cpu-real-run:
+    name: "Real run on GitHub (${{ matrix.os }}, processor, low tier)"
+    if: github.event_name == 'schedule' || inputs.target != 'self-hosted'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      PYTHONUTF8: "1"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Install dependencies
+        run: uv sync
+      - name: Work out the cache key
+        id: cachekey
+        run: uv run --no-sync python tools/ci_cache_key.py --tier low
+      - name: Restore downloaded engine and model
+        id: restore
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.medical-image-gen/tools
+            ~/.cache/huggingface/hub
+          key: ${{ runner.os }}-${{ steps.cachekey.outputs.key }}
+      - name: Set up the engine (downloads on a cache miss)
+        id: setup
+        run: uv run --no-sync python -m medimg setup --engine sdcpp --tier low --yes --output-root "${{ github.workspace }}/ci-output"
+      - name: Save downloaded engine and model
+        if: steps.setup.outcome == 'success' && steps.restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.medical-image-gen/tools
+            ~/.cache/huggingface/hub
+          key: ${{ runner.os }}-${{ steps.cachekey.outputs.key }}
+      - name: End-to-end check
+        id: e2e
+        run: uv run --no-sync python tools/e2e_check.py --engine sdcpp --output-root "${{ github.workspace }}/ci-output" --artifacts ci-artifacts --size 512x512 --steps 4 --timeout 3600
+      - name: Self-test
+        id: selftest
+        if: always() && steps.setup.outcome == 'success'
+        run: uv run --no-sync python -m medimg selftest --engine sdcpp --tier low --quick --no-open --output-root "${{ github.workspace }}/ci-output" --timeout 1800
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: real-run-${{ matrix.os }}
+          path: |
+            ci-artifacts/
+            ci-output/_selftest/
+            ci-output/_smoke/
+            device_profile.json
+          retention-days: 30
+          if-no-files-found: warn
+
+  self-hosted-real-run:
+    name: "Real run on the lab machine"
+    if: github.event_name == 'workflow_dispatch' && (inputs.target == 'self-hosted' || inputs.target == 'both')
+    runs-on: [self-hosted, medimg-lab]
+    timeout-minutes: 240
+    permissions:
+      contents: read
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Install dependencies
+        run: uv sync
+      - name: Set up the engine (keeps the lab machine's own settings)
+        id: setup
+        run: uv run --no-sync python -m medimg setup --yes --skip-assess --output-root "${{ github.workspace }}/ci-output"
+      - name: End-to-end check
+        id: e2e
+        run: uv run --no-sync python tools/e2e_check.py --engine auto --output-root "${{ github.workspace }}/ci-output" --artifacts ci-artifacts --size 512x512 --steps 4 --timeout 3600
+      - name: Self-test (automatic tier)
+        id: selftest_auto
+        if: always() && steps.setup.outcome == 'success' && inputs.selfhosted_tier == 'auto'
+        run: uv run --no-sync python -m medimg selftest --no-open --output-root "${{ github.workspace }}/ci-output" --timeout 1800
+      - name: Self-test (chosen tier)
+        id: selftest_tier
+        if: always() && steps.setup.outcome == 'success' && inputs.selfhosted_tier != 'auto'
+        run: uv run --no-sync python -m medimg selftest --tier ${{ inputs.selfhosted_tier }} --no-open --output-root "${{ github.workspace }}/ci-output" --timeout 1800
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: real-run-lab-${{ runner.name }}
+          path: |
+            ci-artifacts/
+            ci-output/_selftest/
+            ci-output/_smoke/
+            device_profile.json
+          retention-days: 30
+          if-no-files-found: warn

@@ -1,0 +1,81 @@
+[V] System Info: 
+   SSE3 = 1 |    SSSE3 = 1 |    AVX = 1 |    AVX2 = 1 |    F16C = 1 |    FMA = 1 |    BMI2 = 1 |    AVX512 = 1 |    AVX512_VNNI = 1 |    OPENMP = 1 |    REPACK = 1 |  --- main.cpp:695
+[V] using 4 threads for model loading --- model_loader.cpp:190
+[I] loading diffusion model from 'z_image_turbo-Q2_K.gguf' --- diffusion_engine.cpp:692
+[I] load z_image_turbo-Q2_K.gguf using gguf format --- model_loader.cpp:216
+[V] init from 'z_image_turbo-Q2_K.gguf' --- model_loader.cpp:262
+[V] GGUF v3, tensor_count=453, metadata_kv_count=0 --- gguf_reader_ext.h:220
+[I] loading llm from 'qwen3-Q3_K_M.gguf' --- diffusion_engine.cpp:749
+[I] load qwen3-Q3_K_M.gguf using gguf format --- model_loader.cpp:216
+[V] init from 'qwen3-Q3_K_M.gguf' --- model_loader.cpp:262
+[V] GGUF v3, tensor_count=398, metadata_kv_count=42 --- gguf_reader_ext.h:220
+[I] loading vae from 'ae.safetensors' --- diffusion_engine.cpp:763
+[I] load ae.safetensors using safetensors format --- model_loader.cpp:222
+[V] init from 'ae.safetensors', prefix = 'vae.' --- model_loader.cpp:290
+[I] Version: Z-Image  --- diffusion_engine.cpp:975
+[V] Found 2 backend devices: --- ggml_extend_backend.cpp:714
+[V] #0: Vulkan0 --- ggml_extend_backend.cpp:717
+[V] #1: CPU --- ggml_extend_backend.cpp:717
+[V] Initializing backend: Vulkan0 --- ggml_extend_backend.cpp:420
+[V] Initializing backend: CPU --- ggml_extend_backend.cpp:420
+[V] using 4 threads for model loading --- model_loader.cpp:190
+[I] Weight type stat:                      f32: 640  |    q8_0: 22   |    q2_K: 180  |    q3_K: 144  |    q4_K: 104  |    q5_K: 4    |    q6_K: 1     --- diffusion_engine.cpp:1548
+[I] Conditioner weight type stat:          f32: 145  |    q3_K: 144  |    q4_K: 104  |    q5_K: 4    |    q6_K: 1     --- diffusion_engine.cpp:1549
+[I] Diffusion model weight type stat:      f32: 251  |    q8_0: 22   |    q2_K: 180   --- diffusion_engine.cpp:1550
+[I] VAE weight type stat:                  f32: 244   --- diffusion_engine.cpp:1551
+[V] using mmap for I/O --- model_loader.cpp:894
+[I] using mmap for 'z_image_turbo-Q2_K.gguf' --- model_loader.cpp:900
+[V] using mmap for I/O --- model_loader.cpp:894
+[I] using mmap for 'qwen3-Q3_K_M.gguf' --- model_loader.cpp:900
+[V] using mmap for I/O --- model_loader.cpp:894
+[I] using mmap for 'ae.safetensors' --- model_loader.cpp:900
+[V] llm: num_layers = 36, vocab_size = 151936, hidden_size = 2560, intermediate_size = 9728 --- llm.hpp:446
+[V] z_image: num_layers = 30, num_refiner_layers = 2, hidden_size = 3840, num_heads = 30, num_kv_heads = 30, in_channels = 16, out_channels = 16 --- z_image.hpp:125
+[I] using VAE for encoding / decoding --- model_builders.cpp:210
+[I] vae decoder: ch = 128 --- auto_encoder_kl.hpp:529
+[I] flash attention auto: CPU -> on (CPU) --- flash_attn.cpp:66
+[I] flash attention auto: Vulkan0 -> on (probe: normal 11.849 ms, flash 11.048 ms) --- flash_attn.cpp:95
+[W] conv2d direct auto: Vulkan0 -> off (probe output check failed) --- conv_direct.cpp:79
+[W] conv3d direct auto: Vulkan0 -> off (probe output check failed) --- conv_direct.cpp:79
+[I] conv2d direct auto: CPU -> off (no implicit GEMM path) --- conv_direct.cpp:90
+[I] conv3d direct auto: CPU -> off (no implicit GEMM path) --- conv_direct.cpp:90
+[V] validating model metadata --- diffusion_engine.cpp:1307
+[V] model metadata validated; weights will be prepared lazily --- diffusion_engine.cpp:1377
+[I] total params memory size = 4606.10MB (VRAM 0.00MB, RAM 4606.10MB): text_encoders 1973.78MB(RAM), diffusion_model 2472.32MB(RAM), vae 160.00MB(RAM), controlnet 0.00MB(N/A), extensions 0.00MB(N/A) --- diffusion_engine.cpp:1438
+[I] running in FLOW mode --- diffusion_engine.cpp:1478
+[I] generate_image 512x512 --- image.cpp:869
+[V] using 4 threads for model loading --- model_loader.cpp:190
+[I] get_sigmas with discrete scheduler --- denoiser.hpp:1129
+[I] sampling using Euler method --- request.cpp:477
+[V] parse '<|im_start|>user\nclinical photograph of an adult man's hand on a white background<|im_end|>\n<|im_start|>assistant\n' to [['<|im_start|>user\n', 1], ['clinical photograph of an adult man's hand on a white background', 1], ['<|im_end|>\n<|im_start|>assistant\n', 1], ] --- conditioner.hpp:2181
+[V] split prompt "<|im_start|>user\n" to 3 tokens ["<|im_start|>", "user", "ŽS", ] --- bpe_tokenizer.cpp:245
+[V] split prompt "clinical photograph of an adult man's hand on a white background" to 12 tokens ["clinical", "Žÿphotograph", "Žÿof", "Žÿan", "Žÿadult", "Žÿman", "'s", "Žÿhand", "Žÿon", "Žÿa", "Žÿwhite", "Žÿbackground", ] --- bpe_tokenizer.cpp:245
+[V] split prompt "<|im_end|>\n<|im_start|>assistant\n" to 5 tokens ["<|im_end|>", "ŽS", "<|im_start|>", "assistant", "ŽS", ] --- bpe_tokenizer.cpp:245
+[I] qwen3 build cached graph cut plan done (taking 2 ms) --- ggml_graph_cut.cpp:1034
+[V] memory-mapping tensors... --- model_loader.cpp:934
+[I] memory-mapped 386 tensors in 1 files (1927.58 MB), taking 0.00s --- model_loader.cpp:1049
+[V] loading 386/398 tensors from qwen3-Q3_K_M.gguf --- model_loader.cpp:1133
+
+  |##################################################| 386/386 -   0.00MB/s[K
+[I] loading tensors completed, taking 0.20s (read: 0.00s, memcpy: 0.00s, convert: 0.00s, copy_to_backend: 0.00s) --- model_loader.cpp:1405
+[V] qwen3 compute buffer size: 1.88 MB(RAM) on CPU (peak across 1 segment) --- ggml_runner.cpp:1022
+[V] computing condition graph completed, taking 2984 ms --- conditioner.hpp:3287
+[I] get_learned_condition completed, taking 2.98s --- image.cpp:580
+[I] generating image: 1/1 - seed 42 --- image.cpp:920
+[I] z_image build cached graph cut plan done (taking 3 ms) --- ggml_graph_cut.cpp:1034
+[V] memory-mapping tensors... --- model_loader.cpp:934
+[I] memory-mapped 452 tensors in 1 files (2472.30 MB), taking 0.00s --- model_loader.cpp:1049
+[V] loading 452/453 tensors from z_image_turbo-Q2_K.gguf --- model_loader.cpp:1133
+
+  |##################################################| 452/452 -   0.00MB/s[K
+[I] loading tensors completed, taking 0.21s (read: 0.00s, memcpy: 0.00s, convert: 0.00s, copy_to_backend: 0.00s) --- model_loader.cpp:1405
+ggml_vulkan: Device memory allocation of size 475238656 failed.
+ggml_vulkan: vk::Device::allocateMemory: ErrorOutOfDeviceMemory
+[E] ggml: ggml_backend_buft_alloc_buffer_n_default: failed to allocate Vulkan0 buffer of size 475238656
+[E] model manager alloc compute params backend buffer failed, num_tensors = 275 --- model_manager.cpp:571
+[E] z_image segment 1/1 (graph) failed during weight preparation --- ggml_runner.cpp:899
+[E] diffusion model compute failed --- diffusion_engine.cpp:2655
+[E] Diffusion model sampling failed --- diffusion_engine.cpp:2888
+[E] sampling for image 1/1 failed after 5.13s --- image.cpp:961
+[E] generate failed --- main.cpp:926
+

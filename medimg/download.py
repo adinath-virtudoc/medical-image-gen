@@ -1,6 +1,8 @@
 """Model weight downloads. Setup is the only caller that may use the network."""
 from __future__ import annotations
 
+import os
+import platform
 from pathlib import Path
 from typing import Callable
 
@@ -102,3 +104,87 @@ def download_diffusers(mode: str, progress: Callable[[str], None] = print) -> Pa
                                "it resumes where it stopped.") from e
     progress(f"Model ready at {path}")
     return path
+
+
+_OS_OF_BUILD = {"win": "Windows", "linux": "Linux", "mac": "Darwin"}
+
+
+def sdcpp_cached(tier: str, build: str | None = None) -> bool:
+    """True when every model file of the tier (and, if ``build`` is given, its sd-cli binary) is present.
+
+    Offline; never raises. ``build=None`` checks the model files only.
+    """
+    try:
+        from medimg.sdcpp import install
+        if build is not None and install.binary_cached(build) is None:
+            return False
+        return install.models_cached(tier) is not None
+    except Exception:
+        return False
+
+
+def _health(install, pins, build: str) -> str:
+    exe = install.binary_cached(build)
+    if exe is None:
+        raise ModelUnavailable(f"The image program (sd-cli, build {build}) is not installed.",
+                               "Run setup again.")
+    return install.health_check((str(exe),), pins.binary_dir(build))
+
+
+MIN_GLIBC = (2, 38)  # the pinned Linux sd-cli builds are Ubuntu 24.04 artifacts
+
+
+def _check_glibc(build: str) -> None:
+    """Stop before any big download when this Linux is too old to run the pinned sd-cli builds."""
+    if not build.startswith("linux") or platform.system() != "Linux":
+        return
+    try:
+        raw = os.confstr("CS_GNU_LIBC_VERSION") or ""   # e.g. "glibc 2.35"
+        ver = tuple(int(x) for x in raw.split()[-1].split(".")[:2])
+    except (AttributeError, ValueError, OSError, IndexError):
+        return  # unknown (for example musl): let the health check decide
+    if ver < MIN_GLIBC:
+        raise ModelUnavailable(
+            f"This Linux is too old for the image program (it needs glibc {MIN_GLIBC[0]}.{MIN_GLIBC[1]} "
+            f"or newer; this computer has {ver[0]}.{ver[1]}).",
+            "Use Ubuntu 24.04 or newer, then run setup again. Nothing large was downloaded.")
+
+
+def download_sdcpp(tier: str, build: str, progress: Callable[[str], None] = print):
+    """Install sd-cli (if missing), download the tier's models, check the program starts.
+
+    A Vulkan build that fails its health check is replaced by the CPU build. Returns SdcppPaths.
+    """
+    from medimg.sdcpp import install, pins
+    _check_glibc(build)
+    if install.binary_cached(build) is None:
+        progress(f"Downloading the image program ({build}).")
+        install.install_binary(build, progress)
+    else:
+        progress(f"✔ already done: image program {build} is installed")
+    if install.models_cached(tier) is None:
+        progress(f"Downloading the '{tier}' model files (about {pins.TIER_GB[tier]:g} GB). "
+                 "This can take 10-60 minutes depending on your internet.")
+        install.download_models(tier, progress)
+    else:
+        progress("✔ already done: model files are downloaded")
+    final = build
+    try:
+        _health(install, pins, build)
+    except ModelUnavailable as first:
+        if "vulkan" not in build:
+            raise
+        progress("The graphics version of the image program does not start on this computer. "
+                 "Switching to the processor-only version (slower, but it works).")
+        os_name = _OS_OF_BUILD.get(build.split("-")[0])
+        arch = "arm64" if build.endswith("arm64") else "x86_64"
+        cpu_build = pins.build_for(os_name, arch, cpu_fallback=True) if os_name else None
+        if cpu_build is None or cpu_build == build:
+            raise first
+        if install.binary_cached(cpu_build) is None:
+            install.install_binary(cpu_build, progress)
+        _health(install, pins, cpu_build)
+        final = cpu_build
+    install.record_chosen_build(final)
+    progress(f"Using image program build: {final}")
+    return install.resolve_paths(final, tier)

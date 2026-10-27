@@ -33,3 +33,118 @@ def test_bad_size(bad):
 
 def test_size_rounds_down():
     assert smoke.parse_size("1000x520") == (992, 512)
+
+
+def test_fake_engine_wins_over_engine_flag(tmp_path, capsys):
+    rc = smoke.run(Namespace(size="256x256", steps=4, fake_engine=True, engine="sdcpp",
+                             output_root=str(tmp_path)))
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Loading the model (fake)" in out and "sdcpp" not in out
+
+
+def test_sdcpp_prints_device_and_passes_engine_to_decide(tmp_path, monkeypatch, capsys):
+    import medimg.assess as assess_pkg
+    import medimg.engines as engines
+    from medimg import config
+    from medimg.assess.decide import Decision
+    from medimg.engines.fake_engine import FakeEngine
+
+    seen = {}
+
+    def fake_decide(m, **kw):
+        seen["engine"] = kw.get("engine")
+        return Decision("sdcpp", True, "", "", None, False, None, 5.0, 10.0, device="cpu", tier="low")
+
+    class Sd(FakeEngine):
+        name = "sdcpp"
+        device = "cpu"
+
+    def fake_make(backend, profile, **kw):
+        seen["backend"], seen["profile"] = backend, profile
+        return Sd()
+
+    monkeypatch.setattr(assess_pkg, "detect", lambda **kw: object())
+    monkeypatch.setattr(assess_pkg, "decide", fake_decide)
+    monkeypatch.setattr(assess_pkg, "load_profile", lambda *a, **k: None)
+    monkeypatch.setattr(engines, "make_engine", fake_make)
+    monkeypatch.setattr(config, "load_settings", lambda *a, **k: config.Settings(output_root=tmp_path))
+    assert smoke.run(Namespace(size="256x256", steps=4, fake_engine=False, engine="sdcpp",
+                               output_root=str(tmp_path))) == 0
+    assert seen["engine"] == "sdcpp" and seen["backend"] == "sdcpp"
+    assert seen["profile"]["backend"]["device"] == "cpu"
+    assert seen["profile"]["backend"]["sdcpp"] == {"tier": "low"}
+    assert "Loading the model (sdcpp on cpu)..." in capsys.readouterr().out
+
+
+def test_profile_of_other_backend_ignored_when_engine_forced(tmp_path, monkeypatch):
+    import medimg.assess as assess_pkg
+    import medimg.engines as engines
+    from medimg import config
+    from medimg.assess.decide import Decision
+    from medimg.engines.fake_engine import FakeEngine
+
+    made = []
+    monkeypatch.setattr(assess_pkg, "detect", lambda **kw: object())
+    monkeypatch.setattr(assess_pkg, "decide", lambda m, **kw: Decision(
+        "sdcpp", True, "", "", None, False, None, 5.0, 10.0, device="metal", tier="mid"))
+    monkeypatch.setattr(assess_pkg, "load_profile", lambda *a, **k: {"backend": {"supported": True, "name": "mflux"}})
+    monkeypatch.setattr(engines, "make_engine", lambda b, p, **kw: made.append(b) or FakeEngine())
+    monkeypatch.setattr(config, "load_settings", lambda *a, **k: config.Settings(output_root=tmp_path))
+    smoke.run(Namespace(size="256x256", steps=4, fake_engine=False, engine="sdcpp", output_root=str(tmp_path)))
+    assert made == ["sdcpp"]
+
+
+def _wire(monkeypatch, tmp_path, profile):
+    import medimg.assess as assess_pkg
+    import medimg.engines as engines
+    from medimg import config
+    from medimg.assess.decide import Decision
+    from medimg.engines.fake_engine import FakeEngine
+
+    seen = {"decide": [], "make": []}
+
+    def fake_decide(m, **kw):
+        seen["decide"].append(kw)
+        return Decision("sdcpp", True, "", "", None, False, None, 5.0, 10.0, device="cpu", tier=kw.get("tier") or "low")
+
+    monkeypatch.setattr(assess_pkg, "detect", lambda **kw: object())
+    monkeypatch.setattr(assess_pkg, "decide", fake_decide)
+    monkeypatch.setattr(assess_pkg, "load_profile", lambda *a, **k: profile)
+    monkeypatch.setattr(engines, "make_engine", lambda b, p, **kw: seen["make"].append((b, p, kw)) or FakeEngine())
+    monkeypatch.setattr(config, "load_settings", lambda *a, **k: config.Settings(output_root=tmp_path))
+    return seen
+
+
+def test_tier_reaches_decide_and_make_engine(tmp_path, monkeypatch):
+    seen = _wire(monkeypatch, tmp_path, None)
+    assert smoke.run(Namespace(size="256x256", steps=4, fake_engine=False, engine="sdcpp", tier="mid",
+                               output_root=str(tmp_path))) == 0
+    assert seen["decide"][0]["tier"] == "mid"
+    assert seen["make"][0][2]["tier"] == "mid"
+
+
+def test_auto_tier_is_none(tmp_path, monkeypatch):
+    seen = _wire(monkeypatch, tmp_path, None)
+    smoke.run(Namespace(size="256x256", steps=4, fake_engine=False, engine="sdcpp", tier="auto",
+                        output_root=str(tmp_path)))
+    assert seen["decide"][0]["tier"] is None
+
+
+def test_saved_profile_with_other_tier_ignored(tmp_path, monkeypatch):
+    prof = {"backend": {"supported": True, "name": "sdcpp", "device": "cpu", "sdcpp": {"tier": "low"}}}
+    seen = _wire(monkeypatch, tmp_path, prof)
+    smoke.run(Namespace(size="256x256", steps=4, fake_engine=False, tier="high", output_root=str(tmp_path)))
+    assert seen["decide"] and seen["make"][0][2]["tier"] == "high"
+    seen["decide"].clear(); seen["make"].clear()
+    smoke.run(Namespace(size="256x256", steps=4, fake_engine=False, tier="low", output_root=str(tmp_path)))
+    assert seen["decide"] == [] and seen["make"][0][1] is prof
+
+
+def test_smoke_gate(tmp_path, monkeypatch):
+    from medimg.errors import Blocked
+    seen = _wire(monkeypatch, tmp_path, None)
+    monkeypatch.setattr(smoke, "SMOKE_PROMPT", "Clinical illustration of a 5-year-old child")
+    with pytest.raises(Blocked):
+        smoke.run(Namespace(size="256x256", steps=4, fake_engine=True, output_root=str(tmp_path)))
+    assert seen["make"] == [] and seen["decide"] == []

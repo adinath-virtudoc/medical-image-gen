@@ -49,6 +49,9 @@ multiple of 16, each side must be 256-1536, and width x height must not exceed 1
 | 1216x832 | Landscape, close to 3:2 |
 | 768x768 | Low memory |
 
+On the sd.cpp engine (PCs without NVIDIA) the default size is a 512x512 draft, and a warning appears when
+one image is estimated to take more than 15 minutes. See [SETUP_WINDOWS_SDCPP.md](SETUP_WINDOWS_SDCPP.md).
+
 ## Image Name advice
 
 - Use short, plain names: `knee_exam_lateral`, `shoulder_diagram_01`.

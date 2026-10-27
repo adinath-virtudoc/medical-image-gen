@@ -6,6 +6,7 @@ Setup is the only command that may use the network, so it never sets HF_HUB_OFFL
 from __future__ import annotations
 
 import importlib
+import platform
 import importlib.util
 import shutil
 import subprocess
@@ -32,9 +33,16 @@ def _confirm(question: str) -> bool:
         return True
 
 
-def _extra_for(backend: str) -> tuple[str, str]:
-    """(uv extra, python module that proves it is installed)."""
-    return ("mac", "mflux") if backend == "mflux" else ("nvidia", "diffusers")
+_EXTRAS: dict[str, tuple[str, str] | None] = {
+    "mflux": ("mac", "mflux"),
+    "diffusers": ("nvidia", "diffusers"),
+    "sdcpp": None,  # sd-cli is a downloaded program: no extra Python packages
+}
+
+
+def _extra_for(backend: str) -> tuple[str, str] | None:
+    """(uv extra, python module that proves it is installed), or None when none is needed."""
+    return _EXTRAS.get(backend)
 
 
 def _module_present(name: str) -> bool:
@@ -64,11 +72,34 @@ def _smoke_done(root: Path) -> bool:
     return d.is_dir() and any(d.glob("*.png"))
 
 
-def _assess_done(backend: str | None, cpu: str) -> bool:
+def _assess_done(backend: str | None, cpu: str, decision=None, settings=None) -> bool:
     from medimg.assess import load_profile
     p = load_profile()
-    return bool(p and p.get("benchmark") and (p.get("backend") or {}).get("name") == backend
-                and (p.get("machine") or {}).get("cpu") == cpu)
+    if not (p and p.get("benchmark") and (p.get("backend") or {}).get("name") == backend
+            and (p.get("machine") or {}).get("cpu") == cpu):
+        return False
+    if backend == "sdcpp":
+        be = p.get("backend") or {}
+        if be.get("device") is None:
+            return False
+        if (be.get("sdcpp") or {}).get("device_proven") is False:
+            return False
+        if decision is not None and (be.get("sdcpp") or {}).get("tier") != decision.tier:
+            return False
+        wanted = getattr(settings, "sdcpp_device", None)
+        if wanted and be.get("device") != wanted:
+            return False
+    return True
+
+
+MAC_SDCPP_MIN_MAJOR = 26  # the pinned mac-arm64 sd-cli is built for macOS 26.0 or newer
+
+
+def _mac_major() -> int:
+    try:
+        return int(platform.mac_ver()[0].split(".")[0])
+    except (ValueError, IndexError):
+        return 0
 
 
 def run(args) -> int:
@@ -78,10 +109,22 @@ def run(args) -> int:
     root = Path(getattr(args, "output_root", None) or settings.output_root)
     yes = bool(getattr(args, "yes", False))
 
+    engine_arg = getattr(args, "engine", None)
+    pending_engine = None
+    if engine_arg is not None:
+        # Saved only after setup succeeds (see the Done step), so a failed run leaves the old choice.
+        pending_engine = "sdcpp" if engine_arg == "sdcpp" else None
+    engine = engine_arg if engine_arg is not None else settings.engine
+    engine = None if engine in (None, "auto") else engine
+    tier_arg = getattr(args, "tier", None)
+    tier = None if tier_arg in (None, "auto") else tier_arg
+    # an explicit "auto" must not fall back to the saved setting (it is only saved in the last step)
+    child_engine = "auto" if engine_arg == "auto" else engine
+
     # 1. Machine, disk
     _step(1, "Checking this computer")
     machine = detect(disk_path=root)
-    decision = decide(machine)
+    decision = decide(machine, engine=engine, tier=tier)
     print(f"  {machine.os_name} {machine.os_version}, {machine.cpu}, "
           f"{machine.ram_total_gb:g} GB RAM, {machine.disk_free_gb:.1f} GB free disk, "
           f"Python {machine.python}")
@@ -94,8 +137,25 @@ def run(args) -> int:
     backend = decision.backend
     mode = decision.offload_mode
 
-    cached = (download.mflux_cached() is not None if backend == "mflux"
-              else download.diffusers_cached(mode or "model_cpu_offload"))
+    build = None
+    if backend == "sdcpp":
+        from medimg.sdcpp import install
+        build = install.chosen_build(machine.os_name, machine.arch)
+        if build is None:
+            print("There is no sd.cpp build for this computer. It needs a 64-bit Windows or Linux "
+                  "PC, or an Apple Silicon Mac.")
+            return 1
+        if build == "mac-arm64" and _mac_major() < MAC_SDCPP_MIN_MAJOR:
+            print(f"The sd.cpp program for Mac needs macOS {MAC_SDCPP_MIN_MAJOR} or newer, and this Mac "
+                  f"runs macOS {platform.mac_ver()[0] or 'unknown'}.")
+            print("Fix: update macOS, or run ./setup.command --engine auto to use the normal Mac engine.")
+            return 1
+        print(f"  Engine: sdcpp ({build}), model size tier '{decision.tier}'.")
+        cached = download.sdcpp_cached(decision.tier, build)
+    elif backend == "mflux":
+        cached = download.mflux_cached() is not None
+    else:
+        cached = download.diffusers_cached(mode or "model_cpu_offload")
     if cached:
         print(f"  Disk check: {DONE} (model weights are already downloaded)")
     else:
@@ -109,10 +169,13 @@ def run(args) -> int:
 
     # 2. Python packages
     _step(2, "Installing Python packages")
-    extra, module = _extra_for(backend)
-    if _module_present(module):
+    extra_info = _extra_for(backend)
+    if extra_info is None:
+        print(f"  {DONE} (no extra Python packages needed)")
+    elif _module_present(extra_info[1]):
         print(f"  {DONE}")
     else:
+        extra = extra_info[0]
         print(f"  Installing the {extra} packages (uv sync --extra {extra})...")
         rc = _uv_sync(extra)
         if rc != 0:
@@ -130,7 +193,9 @@ def run(args) -> int:
             print("Stopped. Run setup again when you are ready to download.")
             return 1
         try:
-            if backend == "mflux":
+            if backend == "sdcpp":
+                download.download_sdcpp(decision.tier, build, print)
+            elif backend == "mflux":
                 download.download_mflux(print)
             else:
                 download.download_diffusers(mode or "model_cpu_offload", print)
@@ -148,7 +213,8 @@ def run(args) -> int:
         print(f"  {DONE}")
     else:
         from medimg import smoke
-        rc = smoke.run(Namespace(size="512x512", steps=4, fake_engine=False, output_root=str(root)))
+        rc = smoke.run(Namespace(size="512x512", steps=4, fake_engine=False, output_root=str(root),
+                                engine=child_engine, tier=tier))
         if rc != 0:
             print("The test image failed. Run: python -m medimg smoke   to see the error.")
             return 1
@@ -157,16 +223,23 @@ def run(args) -> int:
     _step(5, "Measuring this computer's speed")
     if getattr(args, "skip_assess", False):
         print("  Skipped (--skip-assess).")
-    elif _assess_done(backend, machine.cpu):
+    elif _assess_done(backend, machine.cpu, decision, settings):
         print(f"  {DONE}")
     else:
         from medimg import assess
-        rc = assess.run(Namespace(no_benchmark=False, json=False, output_root=str(root)))
+        rc = assess.run(Namespace(no_benchmark=False, json=False, output_root=str(root),
+                                   engine=child_engine, tier=tier, retry_gpu=False))
         if rc != 0:
             print("The assessment failed. Run: python -m medimg assess   to see the error.")
             return 1
 
     # 6. Next
     _step(6, "Done")
+    if engine_arg is not None or tier_arg is not None:
+        if engine_arg is not None:
+            settings.engine = pending_engine
+        if tier_arg is not None:
+            settings.sdcpp_tier = tier
+        config.save_settings(settings)
     print(f"  Setup finished. Start the app with:\n\n      {_next_command()}\n")
     return 0

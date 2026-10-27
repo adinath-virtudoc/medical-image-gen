@@ -15,3 +15,10 @@ def test_workflow():
     assert any(r.strip() == "uv sync" for r in runs)
     assert any("uv run pytest" in r for r in runs)
     assert not any("macos" in str(o) for o in job["strategy"]["matrix"]["os"])
+
+
+def test_timeout_and_matrix_kept():
+    data = yaml.safe_load(WF.read_text(encoding="utf-8"))
+    job = next(iter(data["jobs"].values()))
+    assert isinstance(job["timeout-minutes"], int) and 0 < job["timeout-minutes"] <= 60
+    assert set(job["strategy"]["matrix"]["os"]) == {"ubuntu-latest", "windows-latest"}

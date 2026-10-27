@@ -12,7 +12,7 @@ from pathlib import Path
 
 from medimg import names, sheet
 from medimg.assess import benchmark as run_benchmark
-from medimg.assess import estimate_seconds, load_profile, record_actual, save_profile
+from medimg.assess import estimate_seconds, load_profile, profile_matches, record_actual, save_profile
 from medimg.engines.base import Engine
 from medimg.errors import Blocked, Busy, Cancelled, Invalid, MedimgError, ModelUnavailable
 from medimg.jobs import JobSpec, RowJob, validate_row_job
@@ -136,7 +136,14 @@ class GenerationWorker:
         self._thread.start()
 
     def stop(self, timeout: float = 5.0) -> None:
+        self._cancel.set()
         self._queue.put(None)
+        abort = getattr(self.engine, "abort", None)
+        if callable(abort):
+            try:
+                abort()
+            except Exception:
+                pass
         if self._thread is not None:
             self._thread.join(timeout)
 
@@ -222,7 +229,9 @@ class GenerationWorker:
 
     def _run_job(self, spec: JobSpec) -> str:
         self._job_start = time.monotonic()
-        self._profile = load_profile(self.profile_path) or self._profile
+        saved = load_profile(self.profile_path)
+        if saved and profile_matches(saved, self.engine.name):
+            self._profile = saved
         if spec.kind == "benchmark":
             return self._run_benchmark()
         if not self._ensure_loaded():
@@ -247,11 +256,14 @@ class GenerationWorker:
             self.state.add_error(None, f"Benchmark failed: {e}")
             return "failed"
         self.state.set_model("ready")
-        profile = load_profile(self.profile_path) or self._profile or {
+        saved = load_profile(self.profile_path)
+        owned = saved is None or profile_matches(saved, self.engine.name)
+        profile = (saved if owned and saved else None) or self._profile or {
             "schema_version": 1, "created_at": _now_iso(), "app_version": None,
             "machine": {}, "backend": {}, "benchmark": None, "actuals": [], "notes": []}
         profile["benchmark"] = result
-        save_profile(profile, self.profile_path)
+        if owned:
+            save_profile(profile, self.profile_path)
         self._profile = profile
         return "done"
 
@@ -354,6 +366,8 @@ class GenerationWorker:
             return
         try:
             record_actual(profile, row.width, row.height, row.steps, time_s)
-            save_profile(profile, self.profile_path)
+            saved = load_profile(self.profile_path)
+            if saved is None or profile_matches(saved, self.engine.name):
+                save_profile(profile, self.profile_path)
         except Exception:
             log.exception("could not save the device profile")

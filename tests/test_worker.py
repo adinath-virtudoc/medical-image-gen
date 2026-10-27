@@ -283,3 +283,31 @@ def test_benchmark_kind_saves_profile(env):
     assert snap["last_job"]["kind"] == "benchmark" and snap["last_job"]["outcome"] == "done"
     prof = load_profile(pp)
     assert len(prof["benchmark"]["points"]) == 2 and "fit" in prof["benchmark"]
+
+
+def test_worker_does_not_write_foreign_profile(env):
+    build, store, sp, pp = env
+
+    class SdFake(FakeEngine):
+        name = "sdcpp"
+
+    prof = profile_dict()
+    prof["backend"] = {"name": "mflux"}
+    save_profile(prof, pp)
+    before = pp.read_bytes()
+    w = build(SdFake(step_s=0.0))
+    w.submit(batch(sp, rowjobs(2)))
+    wait_idle(w)
+    assert pp.read_bytes() == before
+    assert load_profile(pp)["actuals"] == []
+
+    prof["backend"] = {"name": "sdcpp"}
+    save_profile(prof, pp)
+    w2 = build(SdFake(step_s=0.0))
+    sp2 = sp.parent / "work2.xlsx"
+    make_sheet(sp2)
+    rows2 = rowjobs(1)
+    rows2[0].image_name = "other_img"
+    w2.submit(batch(sp2, rows2))
+    wait_idle(w2)
+    assert len(load_profile(pp)["actuals"]) == 1

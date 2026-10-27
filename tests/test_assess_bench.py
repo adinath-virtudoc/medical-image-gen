@@ -21,3 +21,38 @@ def test_benchmark_custom_sizes():
     eng = FakeEngine(step_s=0.0)
     out = benchmark(eng, sizes=((256, 256, 2),))
     assert len(out["points"]) == 1 and eng.calls == 1
+
+
+def test_benchmark_uses_engine_reported_sampling_time():
+    from medimg.assess.bench import benchmark
+
+    class Eng:
+        last_timing = None
+
+        def load(self):
+            pass
+
+        def generate(self, prompt, seed, steps, width, height, on_progress, should_cancel):
+            self.last_timing = {"sample_s": 0.4 * steps, "steps": steps, "overhead_s": 0.2}
+
+    r = benchmark(Eng(), sizes=((512, 512, 4),))
+    p = r["points"][0]
+    assert p["per_step_s"] == 0.4
+    assert p["overhead_s"] == 0.2
+
+
+def test_bench_prompt_passes_gate():
+    from medimg import rules
+    from medimg.assess.bench import BENCH_PROMPT
+    assert rules.check_prompt(BENCH_PROMPT) is None
+
+
+def test_bench_refuses_blocked_prompt(monkeypatch):
+    import pytest
+    from medimg.assess import bench
+    from medimg.errors import Blocked
+    monkeypatch.setattr(bench, "BENCH_PROMPT", "photo of a 12-year-old child")
+    eng = FakeEngine(step_s=0.0)
+    with pytest.raises(Blocked):
+        bench.benchmark(eng)
+    assert not eng.loaded and eng.calls == 0

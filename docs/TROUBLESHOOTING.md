@@ -15,8 +15,20 @@ Find the symptom, check the cause, apply the fix. The app's own error messages a
 | A row is invalid: status `invalid` | Missing cell, bad Size, or two rows with the same output path | Read the Error cell, fix it, upload again |
 | macOS says `setup.command` cannot be opened | The file came from a download and is not yet approved | Right-click the file, choose Open, then Open again; or run `./setup.command` in a terminal |
 | A done image is missing from the Gallery | The sheet says done but this computer never made the image (it came from a previous person) | Nothing is wrong; the image is in the shared Drive folder |
+| The graphics chip ran out of memory (stable-diffusion.cpp engine) | The graphics chip shares memory with the computer, or has too little of its own | Nothing to do: the app switches to the processor by itself and finishes the image, slower. The app now remembers a failed graphics chip and does not try it again. After a graphics driver update, try it again with `.\assess.bat --retry-gpu` (Windows) or `./assess.sh --retry-gpu` (Mac, Linux). To always use the processor, open `~/.medical-image-gen/config.json` (Windows: `C:\Users\<you>\.medical-image-gen\config.json`) and set `"sdcpp_device": "cpu"` |
+| The image program (sd-cli) is not installed | Setup never finished, the `tools` folder under `.medical-image-gen` was deleted, or antivirus removed the file | Run setup again; it downloads only what is missing |
+| A model file is missing or damaged | A download stopped halfway, or a file in the Hugging Face cache was moved or changed | Run setup again; it re-downloads only what is missing and checks every file |
+| The computer ran out of memory while making the image | Another program (browser, Teams) holds the memory, or the picture is larger than 512x512 | Close other programs, pick the `512x512 draft` size, then try again |
+| Very slow (processor-only) | On a computer without a usable graphics chip, `sd-cli` runs on the processor | Expected: about 5 to 6 minutes per 512x512 draft on a 2021 laptop. Make drafts, avoid 1024x1024 (20 minutes or more), and run big batches overnight with the power plugged in |
+| Windows SmartScreen, antivirus or macOS Gatekeeper blocks sd-cli | The program is new and unsigned | Windows: click More info, then Run anyway, or allow the file in your antivirus. Mac: run `xattr -d com.apple.quarantine <path to sd-cli>` in Terminal, using the path under `~/.medical-image-gen/tools/sdcpp/` |
+| sd-cli crashes at start on Windows or Linux (graphics driver or remote desktop) | The Vulkan graphics driver is old or missing, or you are in a remote desktop session | Run setup again: it detects the crash and switches to the processor-only build. Update the graphics driver, and work on the computer itself instead of remote desktop |
+| Self-test says nothing to test | Setup has not finished, so no image program or model files are installed | Run setup (`.\setup.bat` on Windows, `./setup.sh` on Linux, `./setup.command` on Mac), then run the self-test again |
+| Self-test timed out | The test image took longer than the time limit (default 30 minutes), usually a very slow computer or one short of memory | Close other programs, plug in the power, and run it again. Send both report files; they show which step was slow |
+| The image program crashed (code 0xC0000...) | Windows stopped `sd-cli`, often because of a graphics driver problem, a missing Windows component or antivirus | Nothing to do first: the app retries on the processor by itself. If it keeps happening, update the graphics driver, allow `sd-cli` in your antivirus, and send the self-test report |
+| This processor type is not supported (ARM) | The image program has no version for ARM Windows or ARM Linux computers | Use a computer with an Intel or AMD processor, or a Mac with an M-chip. See [HARDWARE_ALTERNATIVES.md](HARDWARE_ALTERNATIVES.md) |
 
 ## Still stuck
 
-Run `./assess.sh --json` (Mac: `./assess.command --json`, Windows: `.\assess.bat --json`) and send the
-output, plus the text of the error, to the project owner.
+Run the self-test (double-click `selftest.command` on Mac or double-click `selftest.bat` on Windows, or
+run `./selftest.sh` on Linux) and send both report files (the `.txt` and the `.json` in the `_selftest`
+folder) to the project owner. See [TEST_MACHINES.md](TEST_MACHINES.md).

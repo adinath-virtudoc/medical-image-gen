@@ -10,6 +10,8 @@ Every image must show an adult. This is a legal line, not a model setting.
   elderly, older man or older woman.
 - A prompt is blocked when it states an age from 0 to 17, or contains a minor term such as child, kid,
   teen, boy, girl, infant, baby, toddler, minor, newborn, adolescent, juvenile, paediatric.
+- The check runs in the server before any engine is called, including the stable-diffusion.cpp engine,
+  so every engine gets the same protection.
 - The check cannot be changed from the app or the sheet. It is deliberately strict and can block an
   innocent prompt (for example one containing "school"); rephrase it.
 
@@ -33,6 +35,8 @@ before it is used for teaching.
 ## Local only
 
 - The app makes no network calls at run time. Only setup downloads packages and model weights.
+- For the `sdcpp` engine, setup also downloads the `sd-cli` program from the pinned GitHub release and
+  checks its SHA256 before use. It is stored in `~/.medical-image-gen/tools/`, never in the repo.
 - The server listens on 127.0.0.1 only, so other computers on your network cannot reach it. There is
   no option to change this.
 - Prompts and images stay on your computer until you upload them yourself.
@@ -44,6 +48,14 @@ before it is used for teaching.
 | `Tongyi-MAI/Z-Image-Turbo` (original, 32.9 GB) | Windows and Linux with NVIDIA | Apache 2.0 (Apache-2.0) |
 | `filipstrand/Z-Image-Turbo-mflux-4bit` (community 4-bit conversion, 5.9 GB) | Mac | The Hugging Face licence field says **other**. Read the model card and get an answer before any commercial use |
 | `unsloth/Z-Image-Turbo-GGUF` (quantized transformer, small NVIDIA cards only) | NVIDIA cards under 15 GB | Listed as Apache 2.0 on its page; check the page again before commercial use |
+| `leejet/stable-diffusion.cpp` (the `sd-cli` program, `sdcpp` engine) | Windows and Linux without NVIDIA | MIT |
+| `ggml` (library inside `sd-cli`) | same | MIT |
+| `leejet/Z-Image-Turbo-GGUF` (quantized Z-Image Turbo) | same | Apache-2.0 |
+| `unsloth/Qwen3-4B-Instruct-2507-GGUF` (text model) | same | Apache-2.0 |
+| `Comfy-Org/z_image_turbo`, file `split_files/vae/ae.safetensors` (image decoder; a copy of the FLUX.1 autoencoder, used because the `black-forest-labs` original is gated) | same | Apache-2.0 |
+
+The five new rows were read from each project's licence or Hugging Face page on 2026-10-27; check the
+pages again before commercial use.
 
 The app's own code is private. Python packages keep their own licences.
 This is not legal advice; ask your organisation's counsel before commercial use.

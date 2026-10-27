@@ -5,7 +5,8 @@
   var state = {
     status: null, galleryVersion: -1, sheet: null, sheetLoaded: false,
     selNode: { subject: "", unit: "", lecture: "" }, images: [], current: null,
-    lastJobId: null, polling: false, estTimer: null, busy: false
+    lastJobId: null, polling: false, estTimer: null, busy: false,
+    warnOverS: null, device: null, estimates: []
   };
 
   // ---------- helpers ----------
@@ -95,6 +96,7 @@
   function renderStatus(s) {
     clearErr("st-error");
     $("st-model").textContent = MODEL[s.model.state] || s.model.state;
+    $("st-device").textContent = state.device ? (" \u00b7 " + state.device) : "";
     if (s.model.state === "error" && s.model.error) {
       showErr("st-error", { cause: "The model failed to load: " + s.model.error, fix: "Run the setup script again, then restart the app." });
     }
@@ -133,6 +135,7 @@
       if (!first) {
         if (state.sheetLoaded) { refreshSheet(); }
         if (!$("tab-device").hidden) { loadDevice(); }
+        loadEstimates();
       }
     }
     if (job && job.errors && job.errors.length) {
@@ -168,6 +171,29 @@
     if (c.defaults) {
       $("s-steps").value = c.defaults.steps; $("s-steps-val").textContent = c.defaults.steps;
     }
+    state.warnOverS = (typeof c.warn_over_s === "number") ? c.warn_over_s : null;
+    state.device = c.device || null;
+    if (state.status) { $("st-device").textContent = state.device ? (" \u00b7 " + state.device) : ""; }
+    if (c.steps_hint) { $("s-steps-hint").textContent = "Steps: " + c.steps_hint + ". More steps is slower and rarely better."; }
+    updateSingleEstimate();
+  }
+  function slowText(sec) {
+    return "This will take about " + mins(sec) + " min per image on this computer. Consider a smaller size such as 512x512.";
+  }
+  function updateSingleEstimate() {
+    var sz = parseSize($("s-size").value), est = null;
+    (state.estimates || []).forEach(function (r) { if (r.width === sz.width && r.height === sz.height) { est = r.seconds; } });
+    var w = $("s-warn");
+    if (est === null) { $("s-estimate").textContent = ""; w.hidden = true; w.textContent = ""; return; }
+    $("s-estimate").textContent = "\u2248 " + mins(est) + " min on this machine";
+    if (state.warnOverS !== null && est > state.warnOverS) { w.textContent = slowText(est); w.hidden = false; }
+    else { w.hidden = true; w.textContent = ""; }
+  }
+  function loadEstimates() {
+    api("GET", "/api/device").then(function (d) {
+      state.estimates = d.estimates || [];
+      updateSingleEstimate();
+    }, function () { /* no estimate shown */ });
   }
 
   // ---------- Tab A: batch ----------
@@ -246,6 +272,9 @@
         count: n, filter: filterObj(), steps: parseInt($("s-steps").value, 10), default_size: $("b-size").value
       }).then(function (r) {
         $("b-estimate").textContent = r.count + " images ≈ " + mins(r.seconds) + " min on this machine";
+        var bw = $("b-warn");
+        if (state.warnOverS !== null && r.per_image_s > state.warnOverS) { bw.textContent = slowText(r.per_image_s); bw.hidden = false; }
+        else { bw.hidden = true; bw.textContent = ""; }
       }, function (e) { showErr("b-err", e); });
     }, 250);
   }
@@ -407,6 +436,7 @@
   function loadDevice() {
     api("GET", "/api/device").then(function (d) {
       $("d-unverified").hidden = !d.unverified;
+      if (d.unverified_text) { $("d-unverified").textContent = d.unverified_text; }
       $("d-report").textContent = d.report || "No device report yet. Click Re-run benchmark.";
       var body = $("d-table-body");
       body.textContent = "";
@@ -454,6 +484,7 @@
       $(id).addEventListener("change", function () { if (state.sheetLoaded) { refreshSheet(); } });
     });
     $("s-steps").addEventListener("input", function () { $("s-steps-val").textContent = $("s-steps").value; });
+    $("s-size").addEventListener("change", updateSingleEstimate);
     $("s-random").addEventListener("click", function () { $("s-seed").value = randomSeed(); });
     $("s-generate").addEventListener("click", generateSingle);
     $("lb-close").addEventListener("click", closeLightbox);
@@ -467,6 +498,7 @@
 
     api("GET", "/api/config").then(applyConfig, function (e) { showErr("st-error", e); });
     loadSettings();
+    loadEstimates();
     api("GET", "/api/sheet" + sheetQuery()).then(function (r) { renderSheet(r, true); }, function () { /* none loaded yet */ });
     poll();
     setInterval(poll, 500);

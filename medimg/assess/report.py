@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from medimg.assess.estimate import estimates_table
+from medimg import config
 from medimg.config import DEFAULT_STEPS
 
 
@@ -36,7 +37,19 @@ def render_report(profile: dict) -> str:
     lines.append("")
     if b.get("supported"):
         mode = f" ({b['offload_mode']})" if b.get("offload_mode") else ""
-        lines.append(f"Supported: yes. Backend {b.get('name')}{mode}. {b.get('reason', '')}")
+        sd = b.get("sdcpp")
+        if b.get("name") == "sdcpp" and sd:
+            from medimg.sdcpp.pins import TIERS
+            tier = sd.get("tier")
+            quant = "?"
+            try:
+                quant = TIERS[tier]["diffusion"].filename.rsplit("-", 1)[-1].split(".")[0]
+            except (KeyError, TypeError):
+                pass
+            lines.append(f"Supported: yes. Backend sdcpp on {b.get('device') or '?'} "
+                         f"(tier {tier}: {quant} image model). {b.get('reason', '')}")
+        else:
+            lines.append(f"Supported: yes. Backend {b.get('name')}{mode}. {b.get('reason', '')}")
     else:
         lines.append(f"Supported: NO. {b.get('reason', '')}")
         if b.get("fix"):
@@ -52,9 +65,13 @@ def render_report(profile: dict) -> str:
     for n in profile.get("notes") or []:
         lines.append(f"Note     : {n}")
     lines.append("")
-    rows = estimates_table(profile, DEFAULT_STEPS)
+    if b.get("name") == "sdcpp":
+        steps, presets = config.SDCPP_DEFAULT_STEPS, config.SDCPP_SIZE_PRESETS
+    else:
+        steps, presets = DEFAULT_STEPS, config.SIZE_PRESETS
+    rows = estimates_table(profile, steps, presets)
     if rows:
-        lines.append(f"Estimated time at {DEFAULT_STEPS} steps")
+        lines.append(f"Estimated time at {steps} steps")
         lines.append(f"{'Size':<22}{'1 image':>10}{'10 images':>12}{'25 images':>12}{'50 images':>12}")
         for r in rows:
             lines.append(f"{r['label']:<22}{fmt_duration(r['seconds']):>10}{fmt_duration(r['for_10']):>12}"

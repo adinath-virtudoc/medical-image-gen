@@ -127,3 +127,107 @@ def test_real_cache_snapshot_offline(monkeypatch):
     path = download.mflux_cached()
     assert path is not None and path.is_dir()
     assert path.name == config.MFLUX_MODEL_REVISION
+
+
+# ---------------------------------------------------------------- sdcpp
+
+from medimg.errors import ModelUnavailable  # noqa: E402
+from medimg.sdcpp import install  # noqa: E402
+
+
+class _Install:
+    def __init__(self, monkeypatch, bins=(), models=False, vulkan_ok=True):
+        self.calls, self.bins, self.models, self.vulkan_ok = [], set(bins), models, vulkan_ok
+        monkeypatch.setattr(install, "binary_cached", lambda b, *a, **k: Path("/x/sd-cli") if b in self.bins else None)
+        monkeypatch.setattr(install, "install_binary", self._ib)
+        monkeypatch.setattr(install, "models_cached", lambda t, *a, **k: {"d": Path("/m")} if self.models else None)
+        monkeypatch.setattr(install, "download_models", self._dm)
+        monkeypatch.setattr(install, "health_check", self._hc)
+        monkeypatch.setattr(install, "record_chosen_build", lambda b, *a, **k: self.calls.append(f"record:{b}"))
+        monkeypatch.setattr(install, "resolve_paths", lambda b, t, *a, **k: ("paths", b, t))
+
+    def _ib(self, build, progress=print, **kw):
+        self.calls.append(f"binary:{build}")
+        self.bins.add(build)
+
+    def _dm(self, tier, progress=print):
+        self.calls.append(f"models:{tier}")
+        self.models = True
+
+    def _hc(self, sd_cli, cwd, *a, **k):
+        self.calls.append("health")
+        if "vulkan" in str(cwd) and not self.vulkan_ok:
+            raise ModelUnavailable("sd-cli failed its self-check.", "Run setup again.")
+        return "v"
+
+
+@pytest.mark.parametrize("bin_present,models,expected", [
+    (True, True, True), (True, False, False), (False, True, False), (False, False, False)])
+def test_sdcpp_cached_matrix(monkeypatch, bin_present, models, expected):
+    _Install(monkeypatch, bins={"win-vulkan-x64"} if bin_present else (), models=models)
+    assert download.sdcpp_cached("low", "win-vulkan-x64") is expected
+
+
+def test_download_sdcpp_order(monkeypatch):
+    inst = _Install(monkeypatch)
+    lines = []
+    out = download.download_sdcpp("low", "linux-vulkan-x64", lines.append)
+    assert inst.calls == ["binary:linux-vulkan-x64", "models:low", "health", "record:linux-vulkan-x64"]
+    assert out == ("paths", "linux-vulkan-x64", "low")
+    assert any("linux-vulkan-x64" in l for l in lines)
+
+
+def test_download_sdcpp_skips_cached(monkeypatch):
+    inst = _Install(monkeypatch, bins={"mac-arm64"}, models=True)
+    download.download_sdcpp("mid", "mac-arm64", lambda m: None)
+    assert inst.calls == ["health", "record:mac-arm64"]
+
+
+def test_download_sdcpp_models_only_when_binary_present(monkeypatch):
+    inst = _Install(monkeypatch, bins={"win-vulkan-x64"})
+    download.download_sdcpp("low", "win-vulkan-x64", lambda m: None)
+    assert inst.calls == ["models:low", "health", "record:win-vulkan-x64"]
+
+
+@pytest.mark.parametrize("vulkan,cpu", [("win-vulkan-x64", "win-cpu-x64"),
+                                        ("linux-vulkan-x64", "linux-cpu-x64")])
+def test_download_sdcpp_vulkan_fallback(monkeypatch, vulkan, cpu):
+    inst = _Install(monkeypatch, vulkan_ok=False)
+    lines = []
+    out = download.download_sdcpp("low", vulkan, lines.append)
+    assert inst.calls == [f"binary:{vulkan}", "models:low", "health", f"binary:{cpu}", "health", f"record:{cpu}"]
+    assert out == ("paths", cpu, "low")
+    assert any("processor-only" in l for l in lines)
+
+
+def test_download_sdcpp_cpu_build_failure_not_masked(monkeypatch):
+    inst = _Install(monkeypatch)
+    monkeypatch.setattr(install, "health_check", lambda *a, **k: (_ for _ in ()).throw(
+        ModelUnavailable("broken", "fix")))
+    with pytest.raises(ModelUnavailable):
+        download.download_sdcpp("low", "win-cpu-x64", lambda m: None)
+    assert not any(c.startswith("record") for c in inst.calls)
+
+
+def test_download_sdcpp_wrong_sha_propagates(monkeypatch):
+    _Install(monkeypatch)
+    monkeypatch.setattr(install, "download_models", lambda *a, **k: (_ for _ in ()).throw(
+        ModelUnavailable("damaged", "Run setup again.")))
+    with pytest.raises(ModelUnavailable) as ei:
+        download.download_sdcpp("low", "win-vulkan-x64", lambda m: None)
+    assert ei.value.fix == "Run setup again."
+
+
+def test_old_glibc_stops_before_download(monkeypatch):
+    monkeypatch.setattr(download.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(os, "confstr", lambda name: "glibc 2.35", raising=False)
+    with pytest.raises(ModelUnavailable, match="2.38"):
+        download.download_sdcpp("low", "linux-vulkan-x64", lambda m: None)
+
+
+def test_sdcpp_cached_models_only_when_build_none(monkeypatch):
+    monkeypatch.setattr(install, "binary_cached", lambda *a, **k: pytest.fail("binary checked"))
+    monkeypatch.setattr(install, "models_cached", lambda tier: {})
+    assert download.sdcpp_cached("low") is True
+    monkeypatch.setattr(install, "models_cached", lambda tier: None)
+    assert download.sdcpp_cached("low") is False
