@@ -137,6 +137,16 @@ class EstimateRequest(BaseModel):
 
 
 # --------------------------------------------------------------------------- app factory
+def _sdcpp_table(profile: dict, steps: int) -> list[dict]:
+    """Estimates for the sd.cpp size presets (the shared table only covers the older six sizes)."""
+    rows = []
+    for label, w, h in config.SDCPP_SIZE_PRESETS:
+        sec = float(estimate_seconds(profile, w, h, steps))
+        rows.append({"label": label, "width": w, "height": h, "seconds": sec,
+                     "for_10": sec * 10, "for_25": sec * 25, "for_50": sec * 50})
+    return rows
+
+
 def create_app(engine, settings: config.Settings, profile: dict | None, *,
                store: Store | None = None) -> FastAPI:
     store_box = {"store": store or Store(settings.output_root)}
@@ -319,9 +329,14 @@ def create_app(engine, settings: config.Settings, profile: dict | None, *,
     # ---- config / status
     @app.get("/api/config")
     def api_config():
+        is_sdcpp = engine.name == "sdcpp"
+        steps_default = settings.steps
+        if is_sdcpp and not getattr(settings, "steps_explicit", False):
+            steps_default = config.SDCPP_DEFAULT_STEPS
+        presets = config.SDCPP_SIZE_PRESETS if is_sdcpp else config.SIZE_PRESETS
         return {
             "version": config.VERSION, "backend": engine.name, "model_id": engine.model_id,
-            "defaults": {"steps": settings.steps, "width": config.DEFAULT_WIDTH,
+            "defaults": {"steps": steps_default, "width": config.DEFAULT_WIDTH,
                          "height": config.DEFAULT_HEIGHT, "port": settings.port,
                          "output_root": str(cur_store().root),
                          "unload_after_job": worker.unload_after_job},
@@ -329,8 +344,12 @@ def create_app(engine, settings: config.Settings, profile: dict | None, *,
                        "side_min": config.SIDE_MIN, "side_max": config.SIDE_MAX,
                        "max_pixels": config.MAX_PIXELS, "multiple": config.SIZE_MULTIPLE,
                        "seed_max": config.SEED_MAX},
-            "size_presets": [{"label": l, "width": w, "height": h} for l, w, h in config.SIZE_PRESETS],
+            "size_presets": [{"label": l, "width": w, "height": h} for l, w, h in presets],
             "local_only": True, "nvidia_unverified": engine.name == "diffusers",
+            "warn_over_s": config.SDCPP_WARN_OVER_S if is_sdcpp else None,
+            "device": getattr(engine, "device", None) if is_sdcpp else None,
+            "steps_hint": (f"{config.SDCPP_DEFAULT_STEPS} recommended for this engine"
+                           if is_sdcpp else None),
         }
 
     @app.get("/api/status")
@@ -578,12 +597,19 @@ def create_app(engine, settings: config.Settings, profile: dict | None, *,
             except Exception:
                 report = ""
             try:
-                table = estimates_table(p, settings.steps)
+                if engine.name == "sdcpp":
+                    table = _sdcpp_table(p, settings.steps if getattr(settings, "steps_explicit", False)
+                                         else config.SDCPP_DEFAULT_STEPS)
+                else:
+                    table = estimates_table(p, settings.steps)
             except Exception:
                 table = []
         name = ((p or {}).get("backend") or {}).get("name")
+        no_record = engine.name == "sdcpp" and not ((p or {}).get("actuals") or [])
         return {"profile": p, "report": report, "estimates": table,
-                "unverified": engine.name == "diffusers" or name == "diffusers"}
+                "unverified": engine.name == "diffusers" or name == "diffusers" or no_record,
+                "unverified_text": ("This engine has no real-run record on this computer yet."
+                                    if engine.name == "sdcpp" and no_record else None)}
 
     @app.post("/api/device/benchmark", status_code=202)
     def api_benchmark():
@@ -635,6 +661,7 @@ def create_app(engine, settings: config.Settings, profile: dict | None, *,
             settings.output_root = new_root
             load_current_from_disk()
         settings.steps = steps
+        settings.steps_explicit = True
         settings.unload_after_job = unload
         worker.unload_after_job = _effective_unload(settings, current_profile())
         try:
@@ -687,17 +714,36 @@ def main(args) -> int:
     if fake:
         engine = make_engine("fake", profile, fake=True)
     else:
+        want = getattr(args, "engine", None) or settings.engine
+        want = want if want in config.ENGINE_CHOICES and want != "auto" else None
         backend = ((profile or {}).get("backend") or {}).get("name")
-        if not backend:
+        if not backend or (want and want != backend):
             from medimg.assess import decide, detect
-            decision = decide(detect(disk_path=settings.output_root))
+            decision = decide(detect(disk_path=settings.output_root), engine=want)
             if not decision.supported or not decision.backend:
                 print(f"Problem: {decision.reason}", file=sys.stderr)
                 if decision.fix:
                     print(f"Fix: {decision.fix}", file=sys.stderr)
                 return 1
             backend = decision.backend
-            profile = profile or {"backend": {"name": backend, "offload_mode": decision.offload_mode}}
+            be: dict = {"name": backend, "offload_mode": decision.offload_mode}
+            if backend == "sdcpp":
+                dev = decision.device
+                if dev and dev != "cpu":
+                    from medimg.smoke import _confirmed_device
+                    dev = _confirmed_device(dev, decision.tier)
+                be["device"] = dev
+                be["sdcpp"] = {"build": None, "tier": decision.tier}
+                try:
+                    from medimg.sdcpp import install
+                    import platform
+                    be["sdcpp"]["build"] = install.chosen_build(platform.system(), platform.machine())
+                except Exception:
+                    pass
+                if not be["sdcpp"]["build"]:
+                    be.pop("sdcpp")
+            # keep machine/benchmark/actuals of an existing profile; never write it back
+            profile = {**(profile or {}), "backend": be}
         engine = make_engine(backend, profile)
 
     app = create_app(engine, settings, profile)

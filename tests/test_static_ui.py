@@ -117,3 +117,19 @@ def test_six_presets(select_id):
 def test_app_js_syntax():
     r = subprocess.run(["node", "--check", str(STATIC / "app.js")], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
+
+
+def test_sdcpp_ui_elements_listed_and_present():
+    ids = set(header_ids())
+    need = {"st-device", "s-estimate", "s-warn", "b-warn", "s-steps-hint"}
+    assert need <= ids, need - ids
+    html = read("index.html")
+    for i in need:
+        assert re.search(r"""\bid\s*=\s*["']%s["']""" % i, html[html.index("-->"):]), i
+
+
+def test_no_urls_anywhere_in_static():
+    for f in STATIC.iterdir():
+        if f.is_file():
+            t = f.read_text(encoding="utf-8")
+            assert "http://" not in t and "https://" not in t, f.name

@@ -52,3 +52,4 @@ th,td{border:1px solid var(--line);padding:5px 8px;text-align:left;vertical-alig
 dl{margin:0}dt{font-weight:600;color:var(--mut);font-size:12px;margin-top:6px}dd{margin:0;word-break:break-word}
 [hidden]{display:none!important}
 @media (max-width:1000px){.cards{grid-template-columns:repeat(3,1fr)}.gal{grid-template-columns:200px 1fr}.lb-body{grid-template-columns:1fr}}
+.warn{border-left:4px solid var(--warn);background:rgba(161,92,0,.15);padding:6px 10px;margin:6px 0;border-radius:4px}
