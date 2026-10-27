@@ -13,7 +13,7 @@ network once it is set up.
 | Free disk | 11 GB (5.9 GB model + 5 GB margin) | 38 GB (32.9 GB model + 5 GB margin); about 18 GB in the small-GPU modes | 10-12 GB (up to 11.7 GB for computers with 24 GB RAM or more) |
 | Driver | none | NVIDIA driver 570 or newer (check with `nvidia-smi`) | no driver needed for the processor path |
 | Status | Tested | **Unverified on real hardware** (built and tested with mocks only) | **App path not yet verified on real hardware.** The `sd-cli` program alone was tested by hand on one 2021 Intel laptop (processor only) |
-| Speed | about 1-4 min per image at 1024x1024 or 768x1344 on an M2 Pro (9 steps) | not measured yet; run `assess` to get an estimate | slow: 5-6 min per 512x512 draft on a 2021 laptop CPU |
+| Speed | about 3 min per 1024x1024 image and about 20 s per 512x512 draft (measured on an M2 Pro with 16 GB, 9 and 4 steps) | not measured yet; run `assess` to get an estimate | slow: 5-6 min per 512x512 draft on a 2021 laptop CPU |
 | Internet | only during setup | only during setup | only during setup |
 
 You do not need to install Python yourself; setup installs everything it needs.
@@ -47,15 +47,23 @@ You do not need to install Python yourself; setup installs everything it needs.
 
    Linux: `./start.sh`. Windows: double-click `start.bat`. Your browser opens at
    `http://127.0.0.1:8750`. The top strip says "local only" and the model state.
+   "Model: not loaded" is normal at this point: the model loads when you press **Generate**, so the
+   first image takes a few seconds longer.
 
 4. **Upload the sample sheet.** In the browser open the "Excel batch" tab, click the upload button
    and choose `templates/image_prompts_sample.xlsx` from this folder. Cards show Total 3 and
    Pending 3. Press **Generate**.
 
 5. **See the image.** Open the "Gallery" tab. Each image appears under Subject, Unit, Lecture as it
-   finishes (about 1-4 min each). Images are saved in `medical-image-gen-output` in your home folder.
+   finishes (about 3 min each at 1024x1024 on an M2 Pro; much longer without an NVIDIA card or a
+   Mac). Images are saved in `medical-image-gen-output` in your home folder.
 
 Stop the app with Ctrl+C in its terminal window, or by closing that window.
+
+**Check the speed of this computer.** Open the "Device" tab. It shows the computer (chip, memory,
+graphics), whether it is supported, and how long 1, 10, 25 and 50 images take at each size. Press
+**Re-run benchmark** once after setup (about 1 minute) so the estimates match this computer; they
+get more accurate as you generate real images.
 
 ## New computer? Run the self-test
 
